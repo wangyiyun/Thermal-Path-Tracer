@@ -39,7 +39,8 @@ uint WangHash(uint a) {
 // "__constant__": This data won't and can't be modified
 
 // Changing variables
-__constant__ float3 camPos = { 30.0f, 0.0f, 300.0f };	// -left, +right
+__constant__ float3 cam_right = { 30.0f, 0.0f, 300.0f };
+__constant__ float3 cam_left = { -30.0f, 0.0f, 300.0f };
 #define USING_WAVE 0	// from 0 to 10
 
 // reflection type (DIFFuse, SPECular, REFRactive)
@@ -236,7 +237,6 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
 			bestHit.matName = spheres[bestHit.geomID].matName;
 			bestHit.temperature = spheres[bestHit.geomID].temperature;
-			bestHit.emi = emiLib[bestHit.matName][USING_WAVE];	// start from 0 
 			bestHit.reflectType = spheres[bestHit.geomID].reflectType;
 			break;
 		case CONE:
@@ -245,7 +245,6 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
 			bestHit.matName = cones[bestHit.geomID].matName;
 			bestHit.temperature = cones[bestHit.geomID].temperature;
-			bestHit.emi = emiLib[bestHit.matName][USING_WAVE];	// start from 0 
 			bestHit.reflectType = cones[bestHit.geomID].reflectType;
 			break;
 		default:
@@ -258,7 +257,7 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 
 // radiance function
 // compute path bounces in scene and accumulate returned color from each path sgment
-__device__ float radiance(Ray& ray, curandState* randstate, int frameNum) { // returns ray color
+__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum) { // returns ray color
 
 	Hit bestHit;
 	// color mask
@@ -287,7 +286,8 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum) { // r
 		if (!intersect_scene(ray, bestHit))
 			return 0.0f; // if miss, return black
 		// else: we've got a hit with a scene primitive
-		accuIntensity += (mask * BBp(bestHit.temperature, wave[USING_WAVE])*bestHit.emi);
+		bestHit.emi = emiLib[bestHit.matName][waveNum];	// start from 0 
+		accuIntensity += (mask * BBp(bestHit.temperature, wave[waveNum])*bestHit.emi);
 		float3 hitPosition = ray.origin + ray.direction * bestHit.hitDist;
 
 		// SHADING: diffuse, specular or refractive
@@ -410,7 +410,21 @@ __global__ void rand_init(int max_x, int max_y, curandState* rand_state) {
 	curand_init(1997 + pixel_index, 0, 0, &rand_state[pixel_index]);
 }
 
-__global__ void render(uchar4 *pos, float3* accumbuffer, curandState* randSt, int width, int height, int frameNum, int HashedFrameNum)
+__device__ float3 transform(float intensity)
+{
+	float3 result;
+	int i = intensity * 100;
+	if (i < 10) result = make_float3(1.0f, 0.0f, 0.0f);
+	else if (i >= 10 && i < 15) result = make_float3(0.8f, 0.2f, 0.0f);
+	else if (i >= 15 && i < 20) result = make_float3(0.6f, 0.4f, 0.0f);
+	else if (i >= 20 && i < 21) result = make_float3(0.4f, 0.6f, 0.0f);
+	else if (i >= 21 && i < 22) result = make_float3(0.2f, 0.8f, 0.0f);
+	else if (i >= 22 && i < 80) result = make_float3(0.2f, 0.8f, 0.0f);
+	else result = make_float3(0.0f, 0.6f, 0.4f);
+	return result;
+}
+
+__global__ void render(uchar4 *pos, float3* accumbuffer, curandState* randSt, int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -431,12 +445,16 @@ __global__ void render(uchar4 *pos, float3* accumbuffer, curandState* randSt, in
 	//if(index == 0 && frameNum < 100) printf("%f, %f\n", offsetX, offsetY);
 	// uv(-0.5, 0.5)
 	float2 uv = make_float2((i + offsetX) / width, (j + offsetY) / height) - make_float2(0.5f, 0.5f);
+	float3 camPos;
+	if (camAtRight) camPos = cam_right;
+	else camPos = cam_left;
 	Ray cam(camPos, normalize(make_float3(0.0f, 0.0f, -1.0f)));
 	float3 screen = make_float3(uv.x * width, -uv.y * height, -500);
 	float3 dir = normalize(screen - cam.origin);
 
-	float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum);
+	float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum);
 	pixelColor = make_float3(intensity);
+	//pixelColor = transform(intensity);
 	if (frameNum == 0) accumbuffer[index] = make_float3(0.0);	//init
 	accumbuffer[index] += pixelColor;
 
@@ -458,7 +476,7 @@ __global__ void render(uchar4 *pos, float3* accumbuffer, curandState* randSt, in
 	pos[index].z = b;
 }
 
-extern "C" void launch_kernel(uchar4* pos, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame) {
+extern "C" void launch_kernel(uchar4* pos, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame, bool camAtRight, int waveNum) {
 
 	//set thread number
 	int tx = 16;
@@ -466,7 +484,7 @@ extern "C" void launch_kernel(uchar4* pos, float3* accumbuffer, curandState* ran
 
 	dim3 blocks(w / tx + 1, h / ty + 1);
 	dim3 threads(tx, ty);
-	render <<<blocks, threads >>> (pos, accumbuffer, randState, w, h, frame, WangHash(frame));
+	render <<<blocks, threads >>> (pos, accumbuffer, randState, w, h, frame, WangHash(frame), camAtRight, waveNum);
 
 	cudaThreadSynchronize();
 	checkCUDAError("kernel failed!");

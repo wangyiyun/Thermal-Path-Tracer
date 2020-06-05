@@ -11,6 +11,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <string>
 
 // may used later when import mesh object
 //#include "LoadMesh.h"
@@ -24,7 +25,6 @@
 #include <curand_kernel.h>
 
 #include "include/FreeImage.h"
-
 
 const int width = 1280;	// width of the figure
 const int height = 720;	// height of the figure
@@ -41,7 +41,12 @@ float3* accu;	// place for accumulate all frame result
 curandState* randState;
 
 // Implement of this function is in kernel.cu
-extern "C" void launch_kernel(uchar4*, float3*, curandState*, unsigned int, unsigned int, unsigned int);
+extern "C" void launch_kernel(uchar4*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int);
+
+// Auto output
+#define OUTPUT_FRAME_NUM 500
+bool camAtRight = true;	// pos of the camera, true for right side, false for left side
+int waveNum = 0;
 
 // create pixel buffer object in OpenGL
 void createPBO(GLuint *pbo)
@@ -74,6 +79,15 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
+void initCuda()
+{
+	// register accu buffer, this buffer won't refresh
+	cudaMalloc(&accu, width * height * sizeof(float3));
+	cudaMalloc(&randState, width * height * sizeof(curandState));
+	createPBO(&pbo);
+	createTexture(&textureID, width, height);
+}
+
 void runCuda()
 {
 	size_t num_bytes;
@@ -81,7 +95,7 @@ void runCuda()
 	cudaGraphicsMapResources(1, &resource, 0);
 	cudaGraphicsResourceGetMappedPointer((void**)&dptr, &num_bytes, resource);
 
-	launch_kernel(dptr, accu, randState, width, height, frame);
+	launch_kernel(dptr, accu, randState, width, height, frame, camAtRight, waveNum);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -94,8 +108,73 @@ void display()
 {
 	
 }
+const char* files[] =
+{
+	"output/0_r.bmp",
+	"output/0_l.bmp",
+	"output/1_r.bmp",
+	"output/1_l.bmp",
+	"output/2_r.bmp",
+	"output/2_l.bmp",
+	"output/3_r.bmp",
+	"output/3_l.bmp",
+	"output/4_r.bmp",
+	"output/4_l.bmp",
+	"output/5_r.bmp",
+	"output/5_l.bmp",
+	"output/6_r.bmp",
+	"output/6_l.bmp",
+	"output/7_r.bmp",
+	"output/7_l.bmp",
+	"output/8_r.bmp",
+	"output/8_l.bmp",
+	"output/9_r.bmp",
+	"output/9_l.bmp",
+	"output/10_r.bmp",
+	"output/10_l.bmp",
+};
+int fileNum = 0;
+void AutoOutput()	// output a result when achieve 2000 frame
+{
+	// for txt data, file size should around 7MB for 1280*720 result
+	GLfloat* pixels = new GLfloat[3 * width * height];
+	glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, pixels);
 
+	//// for bmp image
+	//BYTE* pixels = new BYTE[3 * width * height];
+	//glReadPixels(0, 0, width, height, GL_RGB, GL_BYTE, pixels);
 
+	std::ofstream outfile;
+	std::string  fileName;	// output/wave_?_cam_?.txt
+	fileName += "output/wave_";
+	fileName += std::to_string(waveNum);
+	fileName += "_cam_";
+	if (camAtRight) fileName += "right.txt";
+	else fileName += "left.txt";
+
+	outfile.open(fileName);
+
+	for (int x = 0; x < width * 3; x += 3)
+	{
+		for (int y = 0; y < height; y++)
+		{
+			outfile << pixels[x * height + y] << " ";
+		}
+		outfile << std::endl;
+	}
+	std::cout << "Saved file: " << fileName << std::endl;
+
+	//// Convert to FreeImage format & save to file
+	//FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, width, height, 3 * width, 24, 0x0000FF, 0xFF0000, 0x00FF00, false);
+	//FreeImage_Save(FIF_BMP, image, files[fileNum], 0);
+	//// Free resources
+	//FreeImage_Unload(image);
+
+	fileNum++;
+	if (fileNum >= 22) std::cout << "Output finished!" << std::endl;
+	delete[] pixels;
+	outfile.close();
+}
 
 // glut idle callback.
 // idle function gets called between frames
@@ -103,6 +182,17 @@ void display()
 void idle()
 {
 	frame++;	// accumulate frame number
+
+	if (frame > OUTPUT_FRAME_NUM && waveNum < 11)	// enough sample for current scene
+	{
+		AutoOutput();
+		if (camAtRight == false) waveNum++;
+		camAtRight = !camAtRight;
+		frame = 0;
+		initCuda();
+	}
+	if (waveNum >= 11) return;	// pause the program
+
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// clear current display result on the screen
 	runCuda();	// run CUDA program and calculate current frame result
 
@@ -142,16 +232,6 @@ void printGlInfo()
 	std::cout << "Max Compute Work Group Invocations: " << total << std::endl;
 }
 
-void initCuda()
-{
-	// register accu buffer, this buffer won't refresh
-	cudaMalloc(&accu, width * height * sizeof(float3));
-	cudaMalloc(&randState, width * height * sizeof(curandState));
-	createPBO(&pbo);
-	createTexture(&textureID, width, height);
-	runCuda();
-}
-
 void initOpenGl()
 {
 	frame = 0;
@@ -177,40 +257,6 @@ void keyboard(unsigned char key, int x, int y)
 {
 	//ImGui_ImplGlut_KeyCallback(key);
 	std::cout << "key : " << key << ", x: " << x << ", y: " << y << std::endl;
-
-	if (key == 's')
-	{
-		// Make the BYTE array, factor of 3 because it's RBG.
-		//BYTE* pixels = new BYTE[3 * width * height];
-
-		GLfloat* pixels = new GLfloat[3 * width * height];
-
-		//glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
-		glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, pixels);
-
-		std::ofstream outfile;
-		outfile.open("output/test.txt");
-		
-		for (int x = 0; x < width*3; x += 3)
-		{
-			for (int y = 0; y < height; y++)
-			{
-				outfile << pixels[x * height + y] << " ";
-			}
-			outfile << std::endl;
-		}
-		std::cout << "Saved file." << std::endl;
-
-		//// Convert to FreeImage format & save to file
-		//FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, width, height, 3 * width, 24, 0x0000FF, 0xFF0000, 0x00FF00, false);
-		//FreeImage_Save(FIF_BMP, image, "output/test.bmp", 0);
-
-		// Free resources
-		//FreeImage_Unload(image);
-		delete[] pixels;
-		outfile.close();
-	}
-
 }
 // some callback functions here
 void keyboard_up(unsigned char key, int x, int y)
