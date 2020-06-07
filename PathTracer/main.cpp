@@ -26,8 +26,8 @@
 
 #include "include/FreeImage.h"
 
-const int width = 1280;	// width of the figure
-const int height = 720;	// height of the figure
+const int width = 640;	// width of the figure
+const int height = 480;	// height of the figure
 unsigned int frame = 0;	// a frame counter, used as a random seed
 
 // For OpenGL
@@ -36,12 +36,12 @@ GLuint textureID = 1;	// OpenGL texture to display the result
 
 // For CUDA
 struct cudaGraphicsResource* resource;	// pointer to the teturned object handle
-uchar4* dptr;	// place for CUDA output
+float3* result;	// place for CUDA output
 float3* accu;	// place for accumulate all frame result
 curandState* randState;
 
 // Implement of this function is in kernel.cu
-extern "C" void launch_kernel(uchar4*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int);
+extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int);
 
 // Auto output
 #define OUTPUT_FRAME_NUM 500
@@ -54,9 +54,9 @@ void createPBO(GLuint *pbo)
 	if (pbo)
 	{
 		int num_texels = width * height;
-		int num_values = num_texels * 4;
+		int num_values = num_texels * 3;
 
-		int size_tex_data = sizeof(GLubyte) * num_values;
+		int size_tex_data = sizeof(GLfloat) * num_values;
 
 		glGenBuffers(1, pbo);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, *pbo);
@@ -73,7 +73,7 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 	glGenTextures(1, textureID);
 	glBindTexture(GL_TEXTURE_2D, *textureID);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_FLOAT, NULL);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -93,9 +93,9 @@ void runCuda()
 	size_t num_bytes;
 
 	cudaGraphicsMapResources(1, &resource, 0);
-	cudaGraphicsResourceGetMappedPointer((void**)&dptr, &num_bytes, resource);
+	cudaGraphicsResourceGetMappedPointer((void**)&result, &num_bytes, resource);
 
-	launch_kernel(dptr, accu, randState, width, height, frame, camAtRight, waveNum);
+	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -133,12 +133,22 @@ const char* files[] =
 	"output/10_r.bmp",
 	"output/10_l.bmp",
 };
-int fileNum = 0;
-void AutoOutput()	// output a result when achieve 2000 frame
+
+
+float clamp(float n)
 {
-	// for txt data, file size should around 7MB for 1280*720 result
+	if (n < 0) return 0;
+	if (n > 1) return 1;
+	return n;
+}
+inline int toInt(float x) { return int(clamp(x) * 255 + .5); }
+
+int fileNum = 0;
+void AutoOutput()	// output a result when achieve 8000 frame
+{
+	// for txt data, file size should around 8MB for 1280*720 result
 	GLfloat* pixels = new GLfloat[3 * width * height];
-	glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, pixels);
+	glGetTexImage(GL_TEXTURE_2D ,0, GL_RGB, GL_FLOAT, pixels);
 
 	//// for bmp image
 	//BYTE* pixels = new BYTE[3 * width * height];
@@ -154,14 +164,26 @@ void AutoOutput()	// output a result when achieve 2000 frame
 
 	outfile.open(fileName);
 
-	for (int x = 0; x < width * 3; x += 3)
+	//// ppm file debug
+	//outfile << "P3\n " << width << " " << height << "\n" << "255\n";
+
+	int i = 0;
+	for (int x = 0; x < width * height * 3; x += 3)
 	{
-		for (int y = 0; y < height; y++)
+		outfile << pixels[x] << " ";
+
+		//outfile << toInt(pixels[x]) << " ";
+		//outfile << toInt(pixels[x + 1]) << " ";
+		//outfile << toInt(pixels[x + 2]) << " ";
+
+		i++;
+		if (i == width)
 		{
-			outfile << pixels[x * height + y] << " ";
+			i = 0;
+			outfile << std::endl;
 		}
-		outfile << std::endl;
 	}
+
 	std::cout << "Saved file: " << fileName << std::endl;
 
 	//// Convert to FreeImage format & save to file
@@ -201,7 +223,7 @@ void idle()
 	glBindTexture(GL_TEXTURE_2D, textureID);
 
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,
-		GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		GL_RGB, GL_FLOAT, NULL);
 
 	// draw a quadrangle as large as the window
 	glBegin(GL_QUADS);
@@ -323,7 +345,7 @@ int main(int argc, char **argv)
 	cudaThreadExit();
 	glutDestroyWindow(win);
 
-	cudaFree(dptr);
+	cudaFree(result);
 	cudaFree(accu);
 	cudaFree(randState);
 
