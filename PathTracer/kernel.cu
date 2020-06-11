@@ -9,7 +9,7 @@ using namespace std;
 #include <ctime>
 #include <unordered_map>
 
-#define M_PI 3.14159265358979323846;
+__device__ const double c = 299792458, k = 138064852e-31, PI = 3.141592653589793238463;
 
 void checkCUDAError(const char *msg)
 {
@@ -39,8 +39,8 @@ uint WangHash(uint a) {
 // "__constant__": This data won't and can't be modified
 
 // Changing variables
-__constant__ float3 cam_right = { 30.0f, 0.0f, 300.0f };
-__constant__ float3 cam_left = { -30.0f, 0.0f, 300.0f };
+__constant__ float3 cam_right = { 200.0f, 150.0f, 1100.0f };
+__constant__ float3 cam_left = { 100.0f, 150.0f, 1100.0f };
 #define USING_WAVE 0	// from 0 to 10
 
 // reflection type (DIFFuse, SPECular, REFRactive)
@@ -78,7 +78,7 @@ __constant__ float wave[11] = {
 // emiLib[waveNum][matName]
 __constant__ float emiLib[11][10] = {
 	/*
-	human,			marble,			paint,			glass,			rubber,			brass,			road,			al,				al2o3,		brick*/
+	human,			marble,			paint,			glass,			rubber,			brass,			road,			al,				al2o3,			brick*/
 	9.9000000e-01,	9.5834758e-01,	8.7470001e-01,	5.0455443e-01,	9.2789246e-01,	1.2250251e-01,	9.6426578e-01,	5.5701898e-01,	4.1617280e-02,	9.7773773e-01,
 	9.9000000e-01,	9.5462609e-01,	8.8365367e-01,	2.8523451e-01,	9.2827028e-01,	1.1789014e-01,	9.7194589e-01,	5.4616836e-01,	4.1602933e-02,	9.7348785e-01,
 	9.9000000e-01,	9.5099592e-01,	9.6279529e-01,	3.8887318e-01,	9.2640468e-01,	1.2078545e-01,	9.6430868e-01,	5.2990503e-01,	4.0821044e-02,	9.6252597e-01,
@@ -94,12 +94,15 @@ __constant__ float emiLib[11][10] = {
 
 __device__ float BBp (float T, float v)
 {
-	// 2e8*2*pi*h_bar*c^2
-	float c1 = 1.1910429524674593e-08;
-	// 100*2*pi*h_bar*c/k
-	float c2 = 1.4387773536379256;
-	// BBp = c1*pow(v,3)/(exp(c2*v/T)-1)
-	return float(c1 * pow(v, 3) / (exp(c2 * v / T) - 1.0f));
+	double h = 2 * PI * 105457180e-42;
+	//// 2e8*2*pi*h_bar*c^2
+	//float c1 = 1.1910429524674593e-08;
+	//// 100*2*pi*h_bar*c/k
+	//float c2 = 1.4387773536379256;
+	//// BBp = c1*pow(v,3)/(exp(c2*v/T)-1)
+	//return float(c1 * pow(v, 3) / (exp(c2 * v / T) - 1.0f));
+
+	return 2e8 * (h * c * c * v * v * v) / (exp(100 * h * c * v / k / T) - 1);
 }
 
 struct Ray {
@@ -159,14 +162,14 @@ struct Sphere {
 };
 
 struct Cone {
+	float theta;
 	float3 tip, axis;
-	float cosA, height;
 	int matName;
 	float temperature;
 	Refl_t reflectType;	//DIFF, SPEC, REFR
 	__device__ float intersect(const Ray& ray) const { // returns distance, 0 if nohit  
 
-		float3 co = ray.origin - tip; float cos2t = cosA; cos2t *= cos2t;
+		float3 co = ray.origin - tip; float cos2t = cos(theta*PI/180.0f); cos2t *= cos2t;
 		float t, dotDV = dot(ray.direction, axis), dotCOV = dot(co, axis);
 		float a = dotDV * dotDV - cos2t, b = 2.0f * (dotDV * dotCOV - dot(ray.direction, co) * cos2t),
 			c = dotCOV * dotCOV - dot(co, co) * cos2t, delta = b * b - 4 * a * c;
@@ -178,23 +181,26 @@ struct Cone {
 	}
 };
 
+#define room_width 300.0f
+#define room_height 300.0f
+#define room_depth 1200.0f
 __constant__ Sphere spheres[] = {
 	/* cornell box
-	{radius	position						matName		temperature			reflectType*/
-	{1e5f,	{-1e5f - 100.0f, 0.0f, 0.0f},	mat_brick,	20.0f + 273.15f,	DIFF},// left wall
-	{1e5f,	{1e5f + 100.0f, 0.0f, 0.0f},	mat_brick,	20.0f + 273.15f,	DIFF},// right wall
-	{1e5f,	{0.0f, 0.0f, -1e5f - 100.0f},	mat_brick,	20.0f + 273.15f,	DIFF},// back wall
-	{1e5f,	{0.0f, 0.0f, 1e5f + 500.0f},	mat_brick,	20.0f + 273.15f,	DIFF},// front wall
-	{1e5f,	{0.0f, -1e5f - 100.0f, 0.0f},	mat_road,	20.0f + 273.15f,	DIFF},// floor
-	{1e5f,	{0.0f, 1e5f + 100.0f, 0.0f},	mat_brick,	20.0f + 273.15f,	DIFF},// ceiling  
-	{40.0f,	{50.0f ,-60.0f, 0.0f},			mat_al,		72.5f + 273.15f,	DIFF},// sphere 
-	{50.0f,	{0.0f ,135.0f, 0.0f},			mat_glass,	100.0f + 273.15f,	DIFF} // lamp 
+	{radius	position												matName		temperature			reflectType*/
+	{1e5f,	{-1e5f, 0.0f, 0.0f},									mat_brick,	20.0f + 273.15f,	DIFF},// left wall
+	{1e5f,	{1e5f + room_width, 0.0f, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// right wall
+	{1e5f,	{0.0f, 0.0f, -1e5f},									mat_brick,	20.0f + 273.15f,	DIFF},// back wall
+	{1e5f,	{0.0f, 0.0f, 1e5f + room_depth},						mat_brick,	20.0f + 273.15f,	DIFF},// front wall
+	{1e5f,	{0.0f, -1e5f, 0.0f},									mat_road,	20.0f + 273.15f,	DIFF},// floor
+	{1e5f,	{0.0f, 1e5f + room_height, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// ceiling  
+	{40.0f,	{200.0f ,40.0f, 700.0f},								mat_al,		72.5f + 273.15f,	DIFF},// sphere 
+	{600.0f,{room_width/2 ,room_height+600.0f-2.0f, room_depth/2},	mat_glass,	100.0f + 273.15f,	DIFF} // lamp 
 };
 
 __constant__ Cone cones[] = {
 	/*
-	tip							axis					cosA		height	matName		temperature			reflectType*/
-	{{-50.0f, -20.0f, -80.0f},	{0.0f, -1.0f, 0.0f},	0.976296f,	80.0f,	mat_rubber,	37.0f + 273.15f,	DIFF}
+	theta	tip							axis					matName		temperature			reflectType*/
+	{15,	{100.0f, 80.0f, 500.0f},	{0.0f, -1.0f, 0.0f},	mat_rubber,	37.0f + 273.15f,	DIFF}
 };
 
 __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
@@ -257,15 +263,34 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 	else return false;
 }
 
+// result of radiance:
+// e0+rt0*(e1+rt1*(e2+rt2*(e3...)))
+// save e0 and rt0 in this array
+struct RecursionData
+{
+	float emission;
+	float reflectivity;
+	__device__ void add(float emi, float rt)
+	{
+		emission = emi;
+		reflectivity = rt;
+	}
+	__device__ void init()
+	{
+		emission = 0.0f;
+		reflectivity = 0.0f;
+	}
+};
+
 // radiance function
 // compute path bounces in scene and accumulate returned color from each path sgment
-__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum) { 
+__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index) { 
 
 	Hit bestHit;
-	// color mask
-	float mask = 1.0f;
 	// accumulated color for current pixel
 	float accuIntensity = 0.0f;
+	RecursionData recuData[10];
+	for (int i = 0; i < 10; i++) recuData[i].init();
 
 	//// hit debug
 	//bestHit.Init();
@@ -277,11 +302,11 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 	//	return bestHit.emissivity;
 	//}
 	//// hit debug end
-	
 
 	int bounces = 0;
 	while(bounces < 5 || curand_uniform(randstate) < 0.5f)
 	{  
+		if (bounces >= 10) break;
 		bounces++;
 		bestHit.Init();
 		// intersect ray with scene
@@ -289,7 +314,6 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 			return 0.0f; // if miss, return black
 		// else: we've got a hit with a scene primitive
 		bestHit.emissivity = emiLib[waveNum][bestHit.matName];
-		accuIntensity += (mask * BBp(bestHit.temperature, wave[waveNum])*bestHit.emissivity);
 		float3 hitPosition = ray.origin + ray.direction * bestHit.hitDist;
 
 		// SHADING: diffuse, specular or refractive
@@ -298,7 +322,7 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		if (bestHit.reflectType == DIFF)
 		{
 			// create 2 random numbers
-			float r1 = 2 * 3.1415926 * curand_uniform(randstate);
+			float r1 = 2 * PI * curand_uniform(randstate);
 			float r2 = curand_uniform(randstate);
 			float r2s = sqrtf(r2);
 
@@ -313,73 +337,29 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 			// offset origin next path segment to prevent self intersection
 			hitPosition += bestHit.oriNormal * 0.03;
 
-			// multiply mask with color of object
-			mask *= 1.0f - bestHit.emissivity;
+			// save current emission and reflectivity
+			float emi = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
+			float rt = 1.0f - bestHit.emissivity;
+			recuData[bounces].add(emi, rt);
 		}
-
-		// ideal specular reflection
-		if (bestHit.reflectType == SPEC)
-		{
-
-			// reflect
-			bestHit.nextDir = ray.direction - 2.0f * bestHit.normal * dot(bestHit.normal, ray.direction);
-
-			// offset origin next path segment to prevent self intersection
-			hitPosition += bestHit.oriNormal * 0.01;
-
-			// multiply color to the object
-			mask *= 1.0f - bestHit.emissivity;
-		}
-
-		// ideal refraction (based on smallpt code by Kevin Beason)
-		if (bestHit.reflectType == REFR)
-		{
-
-			bool into = dot(bestHit.normal, bestHit.oriNormal) > 0; // is ray entering or leaving refractive material?
-			float nc = 1.0f;  // Index of Refraction air
-			float nt = 1.5f;  // Index of Refraction glass/water
-			float nnt = into ? nc / nt : nt / nc;  // IOR ratio of refractive materials
-			float ddn = dot(ray.direction, bestHit.oriNormal);
-			float cos2t = 1.0f - nnt * nnt * (1.f - ddn * ddn);
-
-			if (cos2t < 0.0f) // total internal reflection 
-			{
-				bestHit.nextDir = reflect(ray.direction, bestHit.normal); //d = r.dir - 2.0f * n * dot(n, r.dir);
-				hitPosition += bestHit.oriNormal * 0.01f;
-			}
-			else // cos2t > 0
-			{
-				// compute direction of transmission ray
-				float3 tdir = normalize(ray.direction * nnt - bestHit.normal * ((into ? 1 : -1) * (ddn * nnt + sqrtf(cos2t))));
-
-				float R0 = (nt - nc) * (nt - nc) / (nt + nc) * (nt + nc);
-				float c = 1.f - (into ? -ddn : dot(tdir, bestHit.normal));
-				float Re = R0 + (1.f - R0) * c * c * c * c * c;
-				float Tr = 1 - Re; // Transmission
-				float P = .25f + .5f * Re;
-				float RP = Re / P;
-				float TP = Tr / (1.f - P);
-
-				// randomly choose reflection or transmission ray
-				if (curand_uniform(randstate) < 0.25) // reflection ray
-				{
-					mask *= RP;
-					bestHit.nextDir = reflect(ray.direction, bestHit.normal);
-					hitPosition += bestHit.oriNormal * 0.01f;
-				}
-				else // transmission ray
-				{
-					mask *= TP;
-					bestHit.nextDir = tdir; //r = Ray(x, tdir); 
-					hitPosition += bestHit.oriNormal * 0.0005f; // epsilon must be small to avoid artefacts
-				}
-			}
-		}
-
 		// set up origin and direction of next path segment
 		ray.origin = hitPosition;
 		ray.direction = bestHit.nextDir;
 	}
+
+	// data start from 1
+	for (int i = bounces; i > 1; i--)
+	{
+		accuIntensity += recuData[i].emission * recuData[i - 1].reflectivity;
+	}
+	accuIntensity += recuData[1].emission;
+	//if (frameNum == 10 && index == 100)
+	//{
+	//	for (int i = 0; i < 10; i++)
+	//	{
+	//		printf("%d: %f,%f\n", bounces, recuData[i].emission, recuData[i].reflectivity);
+	//	}
+	//}
 
 	// add radiance up to a certain ray depth
 	// return accumulated color after all bounces are computed
@@ -423,10 +403,10 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		if (camAtRight) camPos = cam_right;
 		else camPos = cam_left;
 		Ray cam(camPos, normalize(make_float3(0.0f, 0.0f, -1.0f)));
-		float3 screen = make_float3(uv.x * width, uv.y * height, -250);
+		float3 screen = make_float3(uv.x * width + room_width/2.0f, uv.y * height + room_width/2.0f, 1100.0f - (width/2.0f)* 1.73205080757f);
 		float3 dir = normalize(screen - cam.origin);
 		//result[index] = make_float3(dir.x);
-		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum);
+		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index);
 		pixelColor = make_float3(intensity);
 
 		accumbuffer[index] += pixelColor;
@@ -445,6 +425,7 @@ extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* 
 
 	dim3 blocks(w / tx + 1, h / ty + 1);
 	dim3 threads(tx, ty);
+
 	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), camAtRight, waveNum);
 
 	cudaThreadSynchronize();
