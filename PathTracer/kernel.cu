@@ -183,42 +183,6 @@ struct Cone {
 	}
 };
 
-struct Triangle {
-	float3 vert0, vert1, vert2;
-	int matName;
-	float temperature;
-	Refl_t reflectType;	//DIFF, SPEC, REFR
-	__device__ float intersect(const Ray& ray) const {
-		// find vectors for two edges sharing vert0
-		float3 edge1 = vert1 - vert0;
-		float3 edge2 = vert2 - vert0;
-		float t, u, v;
-		// begin calculating determinant - also used to calculate U parameter
-		float3 pvec = cross(ray.direction, edge2);
-		// if determinant is near zero, ray lies in plane of triangle
-		float det = dot(edge1, pvec);
-		// use backface culling
-		if (det < 0.01f)
-			return 0;
-		float inv_det = 1.0f / det;
-		// calculate distance from vert0 to ray origin
-		float3 tvec = ray.origin - vert0;
-		// calculate U parameter and test bounds
-		u = dot(tvec, pvec) * inv_det;
-		if (u < 0.0 || u > 1.0f)
-			return 0;
-		// prepare to test V parameter
-		float3 qvec = cross(tvec, edge1);
-		// calculate V parameter and test bounds
-		v = dot(ray.direction, qvec) * inv_det;
-		if (v < 0.0 || u + v > 1.0f)
-			return 0;
-		// calculate t, ray intersects triangle
-		t = dot(edge2, qvec) * inv_det;
-		return t;
-	}
-};
-
 __device__ float TriangleIntersect(const Ray& ray, float3 vert0, float3 vert1, float3 vert2)
 {
 	// find vectors for two edges sharing vert0
@@ -256,14 +220,14 @@ __device__ float TriangleIntersect(const Ray& ray, float3 vert0, float3 vert1, f
 __constant__ Sphere spheres[] = {
 	/* cornell box
 	{radius	position												matName		temperature			reflectType*/
-	{1e5f,	{-1e5f, 0.0f, 0.0f},									mat_brick,	20.0f + 273.15f,	DIFF},// left wall
-	{1e5f,	{1e5f + room_width, 0.0f, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// right wall
-	{1e5f,	{0.0f, 0.0f, -1e5f},									mat_brick,	20.0f + 273.15f,	DIFF},// back wall
-	{1e5f,	{0.0f, 0.0f, 1e5f + room_depth},						mat_brick,	20.0f + 273.15f,	DIFF},// front wall
+	//{1e5f,	{-1e5f, 0.0f, 0.0f},									mat_brick,	20.0f + 273.15f,	DIFF},// left wall
+	//{1e5f,	{1e5f + room_width, 0.0f, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// right wall
+	//{1e5f,	{0.0f, 0.0f, -1e5f},									mat_brick,	20.0f + 273.15f,	DIFF},// back wall
+	//{1e5f,	{0.0f, 0.0f, 1e5f + room_depth},						mat_brick,	20.0f + 273.15f,	DIFF},// front wall
 	{1e5f,	{0.0f, -1e5f, 0.0f},									mat_road,	20.0f + 273.15f,	DIFF},// floor
-	{1e5f,	{0.0f, 1e5f + room_height, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// ceiling  
-	{40.0f,	{200.0f ,40.0f, 700.0f},								mat_al,		72.5f + 273.15f,	DIFF},// sphere 
-	{600.0f,{room_width/2 ,room_height+600.0f-2.0f, room_depth/2},	mat_glass,	100.0f + 273.15f,	DIFF} // lamp 
+	//{1e5f,	{0.0f, 1e5f + room_height, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// ceiling  
+	//{40.0f,	{200.0f ,40.0f, 700.0f},								mat_al,		72.5f + 273.15f,	DIFF},// sphere 
+	//{600.0f,{room_width/2 ,room_height+600.0f-2.0f, room_depth/2},	mat_glass,	100.0f + 273.15f,	DIFF} // lamp 
 };
 
 __constant__ Cone cones[] = {
@@ -272,13 +236,7 @@ __constant__ Cone cones[] = {
 	{15,	{100.0f, 80.0f, 500.0f},	{0.0f, -1.0f, 0.0f},	mat_rubber,	37.0f + 273.15f,	DIFF}
 };
 
-__constant__ Triangle triangles[] = {
-	/*
-	vert0					vert1					vert2					matName		temperature			reflectType*/
-	{{200.0f,80.0f,300.0f},	{150.0f,200.0f,300.0f},	{100.0f,80.0f,300.0f},	mat_al,	200.0f + 273.15f,	DIFF}
-};
-
-__device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
+__device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, int vertsNum, float3* mesh_verts)
 {
 	float d = 1e20;
 	float INF = 1e20;
@@ -296,45 +254,36 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 		}
 	}
 
-	// intersect all cones in the scene
-	float conesNum = sizeof(cones) / sizeof(Cone);
-	for (int i = 0; i < conesNum; i++)  // for all cones in scene
-	{
-		// keep track of distance from origin to closest intersection point
-		if ((d = cones[i].intersect(ray)) && d < bestHit.hitDist && d > 0)
-		{
-			bestHit.hitDist = d;
-			bestHit.geomtryType = CONE;
-			bestHit.geomID = i;
-		}
-	}
-
-	// intersect all triangles in the scene
-
-	//float trianglesNum = sizeof(triangles) / sizeof(Triangle);
-	//for (int i = 0; i < trianglesNum; i++)  // for all cones in scene
+	//// intersect all cones in the scene
+	//float conesNum = sizeof(cones) / sizeof(Cone);
+	//for (int i = 0; i < conesNum; i++)  // for all cones in scene
 	//{
 	//	// keep track of distance from origin to closest intersection point
-	//	if ((d = triangles[i].intersect(ray)) && d < bestHit.hitDist && d > 0)
+	//	if ((d = cones[i].intersect(ray)) && d < bestHit.hitDist && d > 0)
 	//	{
 	//		bestHit.hitDist = d;
-	//		bestHit.geomtryType = TRIANGLE;
+	//		bestHit.geomtryType = CONE;
 	//		bestHit.geomID = i;
 	//	}
 	//}
 
-	/*for (int i = 0; i < vertsNum; i++)
+	// intersect all triangles in the scene
+	for (int i = 0; i < vertsNum/3; i++)
 	{
-		float3 v0 = verts_texture[i];
-		float3 v1 = verts_texture[i + 1];
-		float3 v2 = verts_texture[i + 2];
+		float3 v0 = mesh_verts[i*3];
+		float3 v1 = mesh_verts[i*3 + 1];
+		float3 v2 = mesh_verts[i*3 + 2];
 		if ((d = TriangleIntersect(ray, v0, v1, v2)) && d < bestHit.hitDist && d > 0)
 		{
 			bestHit.hitDist = d;
 			bestHit.geomtryType = TRIANGLE;
-			bestHit.geomID = i;
+			bestHit.normal = normalize(cross(v1-v0, v2-v0));
+			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
+			bestHit.matName = mat_al;
+			bestHit.temperature = 150.0f + 273.15f;
+			bestHit.reflectType = DIFF;
 		}
-	}*/
+	}
 	
 
 	// t is distance to closest intersection of ray with all primitives in the scene
@@ -359,14 +308,7 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 			bestHit.reflectType = cones[bestHit.geomID].reflectType;
 			break;
 		case TRIANGLE:
-			float3 edge1, edge2;
-			edge1 = triangles[bestHit.geomID].vert1 - triangles[bestHit.geomID].vert0;
-			edge2 = triangles[bestHit.geomID].vert2 - triangles[bestHit.geomID].vert0;
-			bestHit.normal = normalize(cross(edge1, edge2));
-			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
-			bestHit.matName = mat_human;
-			bestHit.temperature = 37.0f + 273.15f;
-			bestHit.reflectType = DIFF;
+			
 			break;
 		default:
 			break;
@@ -397,7 +339,7 @@ struct RecursionData
 
 // radiance function
 // compute path bounces in scene and accumulate returned color from each path sgment
-__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index) { 
+__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index, int vertsNum, float3* mesh_verts) { 
 
 	Hit bestHit;
 	// accumulated color for current pixel
@@ -407,7 +349,7 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 
 	//// hit debug
 	//bestHit.Init();
-	//if (!intersect_scene(ray, bestHit))
+	//if (!intersect_scene(ray, bestHit, vertsNum, mesh_verts))
 	//	return 0.0f; // if miss, return black
 	//else
 	//{
@@ -423,7 +365,7 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		bounces++;
 		bestHit.Init();
 		// intersect ray with scene
-		if (!intersect_scene(ray, bestHit))
+		if (!intersect_scene(ray, bestHit, vertsNum, mesh_verts))
 			return 0.0f; // if miss, return black
 		// else: we've got a hit with a scene primitive
 		bestHit.emissivity = emiLib[waveNum][bestHit.matName];
@@ -488,7 +430,7 @@ __device__ float3 gammaCorrect(float3 c)
 	return g;
 }
 
-__global__ void render(float3 *result, float3* accumbuffer, curandState* randSt, int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum)
+__global__ void render(float3 *result, float3* accumbuffer, curandState* randSt, int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum, int vertsNum, float3* mesh_verts)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -518,7 +460,7 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		float3 screen = make_float3(uv.x * width + room_width/2.0f, -uv.y * height + room_width/2.0f, 1100.0f - (width/2.0f)* 1.73205080757f);
 		float3 dir = normalize(screen - cam.origin);
 		//result[index] = make_float3(dir.x);
-		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index);
+		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index, vertsNum, mesh_verts);
 		pixelColor = make_float3(intensity);
 
 		accumbuffer[index] += pixelColor;
@@ -529,16 +471,16 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 	result[index] = tempCol;
 }
 
-extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame, bool camAtRight, int waveNum, int vNum, float3* mesh_verts) {
+extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame, bool camAtRight, int waveNum, int vertsNum, float3* mesh_verts) {
 
 	//set thread number
-	int tx = 16;
-	int ty = 16;
+	int tx = 32;
+	int ty = 32;
 
 	dim3 blocks(w / tx + 1, h / ty + 1);
 	dim3 threads(tx, ty);
 	
-	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), camAtRight, waveNum);
+	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), camAtRight, waveNum,vertsNum, mesh_verts);
 
 	cudaThreadSynchronize();
 	checkCUDAError("kernel failed!");

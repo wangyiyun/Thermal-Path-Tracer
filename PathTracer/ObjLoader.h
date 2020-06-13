@@ -5,16 +5,15 @@
 
 struct Mesh
 {
-	std::vector<float3> verts;
+	int vertsNum;
+	float3* verts;
 	std::vector<float2> uvs;
 	std::vector<float3> normals;
 };
 
 bool LoadObj(
 	const char* path,
-	std::vector<float3>& out_vertices,
-	std::vector<float2>& out_uvs,
-	std::vector<float3>& out_normals
+	Mesh &mesh
 )
 {
 	std::vector<int> vertexIndices, uvIndices, normalIndices;
@@ -71,19 +70,24 @@ bool LoadObj(
 		}
 	}
 	std::cout << "verts num: " << vertexIndices.size() << std::endl;
+	mesh.vertsNum = vertexIndices.size();
+	mesh.verts = new float3[mesh.vertsNum];
 	for (unsigned int i = 0; i < vertexIndices.size(); i++)
 	{
 		unsigned int vertexIndex = vertexIndices[i];
 		float3 vertex = temp_vertices[vertexIndex - 1]*100.0f;
-		out_vertices.push_back(vertex);
-		std::cout << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
+		vertex.x += 150.0f;
+		//vertex.y += 50.0f;
+		vertex.z += 500.0f;
+		mesh.verts[i] = vertex;
+		//std::cout << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
 	}
 	//std::cout << "uvs num: " << uvIndices.size() << std::endl;
 	for (unsigned int i = 0; i < uvIndices.size(); i++)
 	{
 		unsigned int uvIndex = uvIndices[i];
 		float2 uv = temp_uvs[uvIndex - 1];
-		out_uvs.push_back(uv);
+		mesh.uvs.push_back(uv);
 		//std::cout << uv.x << " " << uv.y << std::endl;
 	}
 	//std::cout << "normals num: " << normalIndices.size() << std::endl;
@@ -91,7 +95,7 @@ bool LoadObj(
 	{
 		unsigned int normalIndex = normalIndices[i];
 		float3 normal = temp_normals[normalIndex - 1];
-		out_normals.push_back(normal);
+		mesh.normals.push_back(normal);
 		//std::cout << normal.x << " " << normal.y << " " << normal.z << std::endl;
 	}
 	return true;

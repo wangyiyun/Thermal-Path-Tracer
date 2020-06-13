@@ -82,9 +82,9 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 
 void initCuda()
 {
-	vertsNum = bunnyMesh.verts.size();
-	cudaMalloc((void**)& mesh_verts, vertsNum);
-	cudaMemcpy(mesh_verts, &bunnyMesh.verts[0], vertsNum, cudaMemcpyHostToDevice);
+	vertsNum = bunnyMesh.vertsNum;
+	cudaMalloc((void**)& mesh_verts, vertsNum*sizeof(float3));
+	cudaMemcpy(mesh_verts, bunnyMesh.verts, vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
 	// register accu buffer, this buffer won't refresh
 	cudaMalloc(&accu, width * height * sizeof(float3));
 	cudaMalloc(&randState, width * height * sizeof(curandState));
@@ -339,7 +339,7 @@ int main(int argc, char **argv)
 	
 	initOpenGl();
 	// load mesh before init CUDA!
-	LoadObj("input/test.obj", bunnyMesh.verts, bunnyMesh.uvs, bunnyMesh.normals);
+	LoadObj("input/tree.obj", bunnyMesh);
 	//std::cout << bunnyMesh.verts.size() << std::endl;
 
 	initCuda();
@@ -355,6 +355,8 @@ int main(int argc, char **argv)
 	cudaFree(accu);
 	cudaFree(mesh_verts);
 	cudaFree(randState);
+
+	delete[] bunnyMesh.verts;
 
 	return 0;
 }
