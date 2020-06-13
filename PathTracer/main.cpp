@@ -12,10 +12,6 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-
-// may used later when import mesh object
-//#include "LoadMesh.h"
-//#include "LoadTexture.h"
 //#include "imgui_impl_glut.h"
 
 #include "cuda_gl_interop.h"
@@ -25,14 +21,15 @@
 #include <curand_kernel.h>
 
 #include "include/FreeImage.h"
+#include "ObjLoader.h"
 
 const int width = 640;	// width of the figure
 const int height = 480;	// height of the figure
 unsigned int frame = 0;	// a frame counter, used as a random seed
 
 // For OpenGL
-GLuint pbo = 1;	// pxiel buffer object, place for OpenGL and CUDA to switch data and display the result
-GLuint textureID = 1;	// OpenGL texture to display the result
+GLuint pbo = -1;	// pxiel buffer object, place for OpenGL and CUDA to switch data and display the result
+GLuint textureID = -1;	// OpenGL texture to display the result
 
 // For CUDA
 struct cudaGraphicsResource* resource;	// pointer to the teturned object handle
@@ -41,12 +38,16 @@ float3* accu;	// place for accumulate all frame result
 curandState* randState;
 
 // Implement of this function is in kernel.cu
-extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int);
+extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, int, float3*);
 
 // Auto output
 #define OUTPUT_FRAME_NUM 500
 bool camAtRight = true;	// pos of the camera, true for right side, false for left side
 int waveNum = 0;
+
+Mesh bunnyMesh;
+float3* mesh_verts; // the cuda device pointer that points to the uploaded triangles
+int vertsNum = 0;
 
 // create pixel buffer object in OpenGL
 void createPBO(GLuint *pbo)
@@ -81,6 +82,9 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 
 void initCuda()
 {
+	vertsNum = bunnyMesh.verts.size();
+	cudaMalloc((void**)& mesh_verts, vertsNum);
+	cudaMemcpy(mesh_verts, &bunnyMesh.verts[0], vertsNum, cudaMemcpyHostToDevice);
 	// register accu buffer, this buffer won't refresh
 	cudaMalloc(&accu, width * height * sizeof(float3));
 	cudaMalloc(&randState, width * height * sizeof(curandState));
@@ -95,7 +99,7 @@ void runCuda()
 	cudaGraphicsMapResources(1, &resource, 0);
 	cudaGraphicsResourceGetMappedPointer((void**)&result, &num_bytes, resource);
 
-	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum);
+	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, vertsNum, mesh_verts);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -205,15 +209,16 @@ void idle()
 {
 	frame++;	// accumulate frame number
 
-	if (frame > OUTPUT_FRAME_NUM && waveNum < 11)	// enough sample for current scene
-	{
-		AutoOutput();
-		if (camAtRight == false) waveNum++;
-		camAtRight = !camAtRight;
-		frame = 0;
-		initCuda();
-	}
-	if (waveNum >= 11) return;	// pause the program
+	////Auto output for all results
+	//if (frame > OUTPUT_FRAME_NUM && waveNum < 11)	// enough sample for current scene
+	//{
+	//	AutoOutput();
+	//	if (camAtRight == false) waveNum++;
+	//	camAtRight = !camAtRight;
+	//	frame = 0;
+	//	initCuda();
+	//}
+	//if (waveNum >= 11) return;	// pause the program
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// clear current display result on the screen
 	runCuda();	// run CUDA program and calculate current frame result
@@ -271,7 +276,6 @@ void initOpenGl()
 	glEnable(GL_DEPTH_TEST);
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 }
 
 // glut callbacks need to send keyboard and mouse events to imgui
@@ -311,7 +315,6 @@ void mouse(int button, int state, int x, int y)
 	//ImGui_ImplGlut_MouseButtonCallback(button, state);
 }
 
-
 int main(int argc, char **argv)
 {
 	//Configure initial window state using freeglut
@@ -335,9 +338,12 @@ int main(int argc, char **argv)
 
 	
 	initOpenGl();
+	// load mesh before init CUDA!
+	LoadObj("input/test.obj", bunnyMesh.verts, bunnyMesh.uvs, bunnyMesh.normals);
+	//std::cout << bunnyMesh.verts.size() << std::endl;
+
 	initCuda();
 	//ImGui_ImplGlut_Init(); // initialize the imgui system
-
 	printGlInfo();
 
 	//Enter the glut event loop.
@@ -347,6 +353,7 @@ int main(int argc, char **argv)
 
 	cudaFree(result);
 	cudaFree(accu);
+	cudaFree(mesh_verts);
 	cudaFree(randState);
 
 	return 0;

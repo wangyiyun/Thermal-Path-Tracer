@@ -1,3 +1,4 @@
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <iostream>
@@ -8,6 +9,7 @@ using namespace std;
 #include <curand_kernel.h>
 #include <ctime>
 #include <unordered_map>
+
 
 __device__ const double c = 299792458, k = 138064852e-31, PI = 3.141592653589793238463;
 
@@ -46,7 +48,7 @@ __constant__ float3 cam_left = { 100.0f, 150.0f, 1100.0f };
 // reflection type (DIFFuse, SPECular, REFRactive)
 enum Refl_t { DIFF, SPEC, REFR };
 // geometry type
-enum Geom_t { SPHERE, CONE };
+enum Geom_t { SPHERE, CONE, TRIANGLE};
 
 // mat name
 #define mat_human 0
@@ -181,6 +183,73 @@ struct Cone {
 	}
 };
 
+struct Triangle {
+	float3 vert0, vert1, vert2;
+	int matName;
+	float temperature;
+	Refl_t reflectType;	//DIFF, SPEC, REFR
+	__device__ float intersect(const Ray& ray) const {
+		// find vectors for two edges sharing vert0
+		float3 edge1 = vert1 - vert0;
+		float3 edge2 = vert2 - vert0;
+		float t, u, v;
+		// begin calculating determinant - also used to calculate U parameter
+		float3 pvec = cross(ray.direction, edge2);
+		// if determinant is near zero, ray lies in plane of triangle
+		float det = dot(edge1, pvec);
+		// use backface culling
+		if (det < 0.01f)
+			return 0;
+		float inv_det = 1.0f / det;
+		// calculate distance from vert0 to ray origin
+		float3 tvec = ray.origin - vert0;
+		// calculate U parameter and test bounds
+		u = dot(tvec, pvec) * inv_det;
+		if (u < 0.0 || u > 1.0f)
+			return 0;
+		// prepare to test V parameter
+		float3 qvec = cross(tvec, edge1);
+		// calculate V parameter and test bounds
+		v = dot(ray.direction, qvec) * inv_det;
+		if (v < 0.0 || u + v > 1.0f)
+			return 0;
+		// calculate t, ray intersects triangle
+		t = dot(edge2, qvec) * inv_det;
+		return t;
+	}
+};
+
+__device__ float TriangleIntersect(const Ray& ray, float3 vert0, float3 vert1, float3 vert2)
+{
+	// find vectors for two edges sharing vert0
+	float3 edge1 = vert1 - vert0;
+	float3 edge2 = vert2 - vert0;
+	float t, u, v;
+	// begin calculating determinant - also used to calculate U parameter
+	float3 pvec = cross(ray.direction, edge2);
+	// if determinant is near zero, ray lies in plane of triangle
+	float det = dot(edge1, pvec);
+	// use backface culling
+	if (det < 0.01f)
+		return 0;
+	float inv_det = 1.0f / det;
+	// calculate distance from vert0 to ray origin
+	float3 tvec = ray.origin - vert0;
+	// calculate U parameter and test bounds
+	u = dot(tvec, pvec) * inv_det;
+	if (u < 0.0 || u > 1.0f)
+		return 0;
+	// prepare to test V parameter
+	float3 qvec = cross(tvec, edge1);
+	// calculate V parameter and test bounds
+	v = dot(ray.direction, qvec) * inv_det;
+	if (v < 0.0 || u + v > 1.0f)
+		return 0;
+	// calculate t, ray intersects triangle
+	t = dot(edge2, qvec) * inv_det;
+	return t;
+}
+
 #define room_width 300.0f
 #define room_height 300.0f
 #define room_depth 1200.0f
@@ -201,6 +270,12 @@ __constant__ Cone cones[] = {
 	/*
 	theta	tip							axis					matName		temperature			reflectType*/
 	{15,	{100.0f, 80.0f, 500.0f},	{0.0f, -1.0f, 0.0f},	mat_rubber,	37.0f + 273.15f,	DIFF}
+};
+
+__constant__ Triangle triangles[] = {
+	/*
+	vert0					vert1					vert2					matName		temperature			reflectType*/
+	{{200.0f,80.0f,300.0f},	{150.0f,200.0f,300.0f},	{100.0f,80.0f,300.0f},	mat_al,	200.0f + 273.15f,	DIFF}
 };
 
 __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
@@ -234,6 +309,34 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 		}
 	}
 
+	// intersect all triangles in the scene
+
+	//float trianglesNum = sizeof(triangles) / sizeof(Triangle);
+	//for (int i = 0; i < trianglesNum; i++)  // for all cones in scene
+	//{
+	//	// keep track of distance from origin to closest intersection point
+	//	if ((d = triangles[i].intersect(ray)) && d < bestHit.hitDist && d > 0)
+	//	{
+	//		bestHit.hitDist = d;
+	//		bestHit.geomtryType = TRIANGLE;
+	//		bestHit.geomID = i;
+	//	}
+	//}
+
+	/*for (int i = 0; i < vertsNum; i++)
+	{
+		float3 v0 = verts_texture[i];
+		float3 v1 = verts_texture[i + 1];
+		float3 v2 = verts_texture[i + 2];
+		if ((d = TriangleIntersect(ray, v0, v1, v2)) && d < bestHit.hitDist && d > 0)
+		{
+			bestHit.hitDist = d;
+			bestHit.geomtryType = TRIANGLE;
+			bestHit.geomID = i;
+		}
+	}*/
+	
+
 	// t is distance to closest intersection of ray with all primitives in the scene
 	if (bestHit.hitDist < INF)
 	{
@@ -254,6 +357,16 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit)
 			bestHit.matName = cones[bestHit.geomID].matName;
 			bestHit.temperature = cones[bestHit.geomID].temperature;
 			bestHit.reflectType = cones[bestHit.geomID].reflectType;
+			break;
+		case TRIANGLE:
+			float3 edge1, edge2;
+			edge1 = triangles[bestHit.geomID].vert1 - triangles[bestHit.geomID].vert0;
+			edge2 = triangles[bestHit.geomID].vert2 - triangles[bestHit.geomID].vert0;
+			bestHit.normal = normalize(cross(edge1, edge2));
+			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
+			bestHit.matName = mat_human;
+			bestHit.temperature = 37.0f + 273.15f;
+			bestHit.reflectType = DIFF;
 			break;
 		default:
 			break;
@@ -383,7 +496,6 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		return;
 	// unique id for the pixel
 	int index = j * width + i;
-
 	if (frameNum == 0)	//init
 	{
 		accumbuffer[index] = make_float3(0.0);
@@ -403,7 +515,7 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		if (camAtRight) camPos = cam_right;
 		else camPos = cam_left;
 		Ray cam(camPos, normalize(make_float3(0.0f, 0.0f, -1.0f)));
-		float3 screen = make_float3(uv.x * width + room_width/2.0f, uv.y * height + room_width/2.0f, 1100.0f - (width/2.0f)* 1.73205080757f);
+		float3 screen = make_float3(uv.x * width + room_width/2.0f, -uv.y * height + room_width/2.0f, 1100.0f - (width/2.0f)* 1.73205080757f);
 		float3 dir = normalize(screen - cam.origin);
 		//result[index] = make_float3(dir.x);
 		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index);
@@ -417,7 +529,7 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 	result[index] = tempCol;
 }
 
-extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame, bool camAtRight, int waveNum) {
+extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame, bool camAtRight, int waveNum, int vNum, float3* mesh_verts) {
 
 	//set thread number
 	int tx = 16;
@@ -425,7 +537,7 @@ extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* 
 
 	dim3 blocks(w / tx + 1, h / ty + 1);
 	dim3 threads(tx, ty);
-
+	
 	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), camAtRight, waveNum);
 
 	cudaThreadSynchronize();

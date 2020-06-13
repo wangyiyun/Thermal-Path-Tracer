@@ -108,8 +108,7 @@
   <ItemGroup>
     <ClInclude Include="cutil_math.h" />
     <ClInclude Include="imgui_impl_glut.h" />
-    <ClInclude Include="LoadMesh.h" />
-    <ClInclude Include="LoadTexture.h" />
+    <ClInclude Include="ObjLoader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="imgui\imgui.cpp" />
@@ -117,8 +116,6 @@
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="imgui_impl_glut.cpp" />
-    <ClCompile Include="LoadMesh.cpp" />
-    <ClCompile Include="LoadTexture.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
