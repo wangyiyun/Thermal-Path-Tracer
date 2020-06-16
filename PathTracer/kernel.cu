@@ -10,7 +10,6 @@ using namespace std;
 #include <ctime>
 #include <unordered_map>
 
-
 __device__ const double c = 299792458, k = 138064852e-31, PI = 3.141592653589793238463;
 
 void checkCUDAError(const char *msg)
@@ -241,18 +240,18 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, int vertsNu
 	float d = 1e20;
 	float INF = 1e20;
 
-	// intersect all spheres in the scene
-	float spheresNum = sizeof(spheres) / sizeof(Sphere);
-	for (int i = 0; i < spheresNum; i++)  // for all spheres in scene
-	{
-		// keep track of distance from origin to closest intersection point
-		if ((d = spheres[i].intersect(ray)) && d < bestHit.hitDist && d > 0)
-		{ 
-			bestHit.hitDist = d;
-			bestHit.geomtryType = SPHERE;
-			bestHit.geomID = i;
-		}
-	}
+	//// intersect all spheres in the scene
+	//float spheresNum = sizeof(spheres) / sizeof(Sphere);
+	//for (int i = 0; i < spheresNum; i++)  // for all spheres in scene
+	//{
+	//	// keep track of distance from origin to closest intersection point
+	//	if ((d = spheres[i].intersect(ray)) && d < bestHit.hitDist && d > 0)
+	//	{ 
+	//		bestHit.hitDist = d;
+	//		bestHit.geomtryType = SPHERE;
+	//		bestHit.geomID = i;
+	//	}
+	//}
 
 	//// intersect all cones in the scene
 	//float conesNum = sizeof(cones) / sizeof(Cone);
@@ -279,8 +278,8 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, int vertsNu
 			bestHit.geomtryType = TRIANGLE;
 			bestHit.normal = normalize(cross(v1-v0, v2-v0));
 			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
-			bestHit.matName = mat_al;
-			bestHit.temperature = 150.0f + 273.15f;
+			bestHit.matName = mat_glass;
+			bestHit.temperature = 100.0f + 273.15f;
 			bestHit.reflectType = DIFF;
 		}
 	}
@@ -345,7 +344,6 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 	// accumulated color for current pixel
 	float accuIntensity = 0.0f;
 	RecursionData recuData[10];
-	for (int i = 0; i < 10; i++) recuData[i].init();
 
 	//// hit debug
 	//bestHit.Init();
@@ -354,7 +352,8 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 	//else
 	//{
 	//	bestHit.emissivity = emiLib[waveNum][bestHit.matName];
-	//	return bestHit.emissivity;
+	//	accuIntensity = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
+	//	return accuIntensity;
 	//}
 	//// hit debug end
 
@@ -364,14 +363,22 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		if (bounces >= 10) break;
 		bounces++;
 		bestHit.Init();
+		recuData[bounces].init();
 		// intersect ray with scene
 		if (!intersect_scene(ray, bestHit, vertsNum, mesh_verts))
-			return 0.0f; // if miss, return black
+		{
+			break; // if miss STOP looping, will influnce the output of recuData since already return 
+		}
+
 		// else: we've got a hit with a scene primitive
 		bestHit.emissivity = emiLib[waveNum][bestHit.matName];
-		float3 hitPosition = ray.origin + ray.direction * bestHit.hitDist;
+		// save current emission and reflectivity
+		
+		float emi = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
+		float rt = 1.0f - bestHit.emissivity;
+		recuData[bounces].add(emi, rt);
 
-		// SHADING: diffuse, specular or refractive
+		float3 hitPosition = ray.origin + ray.direction * bestHit.hitDist;
 
 		// ideal diffuse reflection
 		if (bestHit.reflectType == DIFF)
@@ -391,11 +398,6 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 
 			// offset origin next path segment to prevent self intersection
 			hitPosition += bestHit.oriNormal * 0.03;
-
-			// save current emission and reflectivity
-			float emi = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
-			float rt = 1.0f - bestHit.emissivity;
-			recuData[bounces].add(emi, rt);
 		}
 		// set up origin and direction of next path segment
 		ray.origin = hitPosition;
@@ -407,16 +409,10 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 	{
 		accuIntensity += recuData[i].emission * recuData[i - 1].reflectivity;
 	}
+	// if show reflection only?
 	accuIntensity += recuData[1].emission;
-	//if (frameNum == 10 && index == 100)
-	//{
-	//	for (int i = 0; i < 10; i++)
-	//	{
-	//		printf("%d: %f,%f\n", bounces, recuData[i].emission, recuData[i].reflectivity);
-	//	}
-	//}
+	return accuIntensity;
 
-	// add radiance up to a certain ray depth
 	// return accumulated color after all bounces are computed
 	return accuIntensity;
 }

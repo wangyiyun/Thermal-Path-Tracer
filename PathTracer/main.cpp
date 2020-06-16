@@ -339,7 +339,7 @@ int main(int argc, char **argv)
 	
 	initOpenGl();
 	// load mesh before init CUDA!
-	LoadObj("input/tree.obj", bunnyMesh);
+	LoadObj("input/vases_set.obj", bunnyMesh);
 	//std::cout << bunnyMesh.verts.size() << std::endl;
 
 	initCuda();
