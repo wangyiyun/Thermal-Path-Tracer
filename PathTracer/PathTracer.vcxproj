@@ -109,6 +109,7 @@
     <ClInclude Include="cutil_math.h" />
     <ClInclude Include="imgui_impl_glut.h" />
     <ClInclude Include="ObjLoader.h" />
+    <ClInclude Include="TexLoader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="imgui\imgui.cpp" />

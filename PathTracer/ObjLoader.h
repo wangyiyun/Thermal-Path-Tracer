@@ -1,16 +1,25 @@
 #pragma once
 #include <iostream>
 #include <vector>
+#include <string>
 #include "cutil_math.h"
 
 struct Scene
 {
-	int vertsNum;	// vertices number of the scene
+	int vertsNum;	// vertices number of the scene, also the number of uvs and normals
 	float3* verts;	// pointer for all vertices
 	int objsNum;
-	int* objs;		// pointer for obj's verts start num
-	std::vector<float2> uvs;
-	std::vector<float3> normals;
+	int* objsInfo;		// [objVertsNum, matNum, uvTexNum, ambTexNum]
+	float2* uvs;
+	float3* normals;
+	std::vector<std::string> objNames;
+	void FreeScene()
+	{
+		delete[] verts;
+		delete[] objsInfo;
+		delete[] uvs;
+		delete[] normals;
+	}
 };
 
 bool LoadObj(
@@ -41,6 +50,7 @@ bool LoadObj(
 		if (strcmp(lineHeader, "o") == 0) {
 			char objectName[128];
 			fscanf(file, "%s\n", objectName);
+			scene.objNames.push_back(objectName);
 			temp_object_indices.push_back(vertexIndices.size());
 		}
 		else if (strcmp(lineHeader, "v") == 0) {
@@ -72,19 +82,22 @@ bool LoadObj(
 			uvIndices.push_back(uvIndex[0]);
 			uvIndices.push_back(uvIndex[1]);
 			uvIndices.push_back(uvIndex[2]);
+			// normal index are same!!
 			normalIndices.push_back(normalIndex[0]);
-			normalIndices.push_back(normalIndex[1]);
-			normalIndices.push_back(normalIndex[2]);
+			//normalIndices.push_back(normalIndex[1]);
+			//normalIndices.push_back(normalIndex[2]);
 		}
 	}
 	scene.objsNum = temp_object_indices.size();
-	scene.objs = new int[scene.objsNum];
+	scene.objsInfo = new int[4 * scene.objsNum];
 	for (unsigned int i = 0; i < temp_object_indices.size(); i++)
 	{
-		scene.objs[i] = temp_object_indices[i];
-		std::cout << scene.objs[i] << " ";
+		// [objVertsNum, matNum, uvTexNum, ambTexNum]
+		scene.objsInfo[i * 4] = temp_object_indices[i];	//objVertsNum
+		scene.objsInfo[i * 4 + 1] = -1;	//matNum
+		scene.objsInfo[i * 4 + 2] = -1;	//uvTexNum
+		scene.objsInfo[i * 4 + 3] = -1;	//ambTexNum
 	}
-	std::cout << std::endl;
 	std::cout << "verts num: " << vertexIndices.size() << std::endl;
 	scene.vertsNum = vertexIndices.size();
 	scene.verts = new float3[scene.vertsNum];
@@ -99,19 +112,22 @@ bool LoadObj(
 		//std::cout << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
 	}
 	//std::cout << "uvs num: " << uvIndices.size() << std::endl;
+	scene.uvs = new float2[scene.vertsNum];
 	for (unsigned int i = 0; i < uvIndices.size(); i++)
 	{
 		unsigned int uvIndex = uvIndices[i];
 		float2 uv = temp_uvs[uvIndex - 1];
-		scene.uvs.push_back(uv);
+		scene.uvs[i] = uv;
 		//std::cout << uv.x << " " << uv.y << std::endl;
 	}
 	//std::cout << "normals num: " << normalIndices.size() << std::endl;
+	// normals num == faces num
+	scene.normals = new float3[scene.vertsNum/3];
 	for (unsigned int i = 0; i < normalIndices.size(); i++)
 	{
 		unsigned int normalIndex = normalIndices[i];
 		float3 normal = temp_normals[normalIndex - 1];
-		scene.normals.push_back(normal);
+		scene.normals[i] = normal;
 		//std::cout << normal.x << " " << normal.y << " " << normal.z << std::endl;
 	}
 	return true;

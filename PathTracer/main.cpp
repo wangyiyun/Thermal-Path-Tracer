@@ -22,6 +22,7 @@
 
 #include "include/FreeImage.h"
 #include "ObjLoader.h"
+#include "TexLoader.h"
 
 const int width = 640;	// width of the figure
 const int height = 480;	// height of the figure
@@ -38,7 +39,8 @@ float3* accu;	// place for accumulate all frame result
 curandState* randState;
 
 // Implement of this function is in kernel.cu
-extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, int, float3*, int, int*);
+extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, 
+	int, float3*, int, int*, float2*, float3*);
 
 // Auto output
 #define OUTPUT_FRAME_NUM 500
@@ -48,6 +50,15 @@ int waveNum = 0;
 Scene SceneData;
 float3* scene_verts; // the cuda device pointer that points to the uploaded triangles
 int* scene_objs;
+float2* scene_uvs;
+float3* scene_normals;
+
+//void draw_gui()
+//{
+//	ImGui_ImplGlut_NewFrame();
+//	ImGui::ShowDemoWindow();
+//	ImGui::Render();
+//}
 
 // create pixel buffer object in OpenGL
 void createPBO(GLuint *pbo)
@@ -80,12 +91,41 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
+void matchTex()
+{
+	std::cout << "mat_human = 0, mat_marble = 1, mat_paint = 2, mat_glass = 3, mat_rubber = 4"<< std::endl;
+	std::cout << "mat_brass = 5, mat_road = 6, mat_al = 7, mat_al2o3 = 8, mat_brick = 9" << std::endl;
+	std::cout << "If don't have texture, input -1" << std::endl;
+	for (unsigned int i = 0; i < SceneData.objsNum; i++)
+	{
+		// [objVertsNum, matNum, uvTexNum, ambTexNum]
+		std::cout << "Current object name is :";
+		std::cout << SceneData.objNames[i] << std::endl;
+		//std::cout << "Verts start from:";
+		//std::cout << SceneData.objsInfo[i * 4] << std::endl;
+		std::cout << "The mat number is:";
+		std::cin >> SceneData.objsInfo[i * 4 + 1];
+		//std::cout << "The uv texture number is:";
+		//std::cin >> SceneData.objsInfo[i * 4 + 2];
+		//std::cout << "The ambient texture number is:";
+		//std::cin >> SceneData.objsInfo[i * 4 + 3];
+	}
+}
+
 void initCuda()
 {
+	// all verts in scene
 	cudaMalloc((void**)& scene_verts, SceneData.vertsNum *sizeof(float3));
 	cudaMemcpy(scene_verts, SceneData.verts, SceneData.vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
-	cudaMalloc((void**)& scene_objs, SceneData.objsNum * sizeof(int));
-	cudaMemcpy(scene_objs, SceneData.objs, SceneData.objsNum * sizeof(int), cudaMemcpyHostToDevice);
+	// all objects and info	[objVertsNum, matNum, uvTexNum, ambTexNum]
+	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 4 * sizeof(int));
+	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 4 * sizeof(int), cudaMemcpyHostToDevice);
+	// all uvs at each vert
+	cudaMalloc((void**)& scene_uvs, SceneData.vertsNum * sizeof(float2));
+	cudaMemcpy(scene_uvs, SceneData.uvs, SceneData.vertsNum * sizeof(float2), cudaMemcpyHostToDevice);
+	// all normals at each vert
+	cudaMalloc((void**)& scene_normals, (SceneData.vertsNum/3) * sizeof(float3));
+	cudaMemcpy(scene_normals, SceneData.normals, (SceneData.vertsNum/3) * sizeof(float3), cudaMemcpyHostToDevice);
 	cudaMalloc(&accu, width * height * sizeof(float3));	// register accu buffer, this buffer won't refresh
 	cudaMalloc(&randState, width * height * sizeof(curandState));
 	createPBO(&pbo);
@@ -100,7 +140,8 @@ void runCuda()
 	cudaGraphicsResourceGetMappedPointer((void**)&result, &num_bytes, resource);
 
 	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, 
-		SceneData.vertsNum, scene_verts, SceneData.objsNum, scene_objs);
+		SceneData.vertsNum, scene_verts, SceneData.objsNum, scene_objs,
+		scene_uvs, scene_normals);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -111,7 +152,7 @@ void runCuda()
 // so currently it won't be used
 void display()
 {
-	
+	//draw_gui();
 }
 const char* files[] =
 {
@@ -340,7 +381,9 @@ int main(int argc, char **argv)
 	
 	initOpenGl();
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/test.obj", SceneData);
+	LoadObj("input/scene2.obj", SceneData);
+	// LoadTex("input/texture/...", TexData?);
+	matchTex();
 	//std::cout << SceneData.verts.size() << std::endl;
 
 	initCuda();
@@ -355,9 +398,10 @@ int main(int argc, char **argv)
 	cudaFree(result);
 	cudaFree(accu);
 	cudaFree(scene_verts);
+	cudaFree(scene_objs);
 	cudaFree(randState);
 
-	delete[] SceneData.verts;
+	SceneData.FreeScene();
 
 	return 0;
 }
