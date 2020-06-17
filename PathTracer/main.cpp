@@ -38,16 +38,16 @@ float3* accu;	// place for accumulate all frame result
 curandState* randState;
 
 // Implement of this function is in kernel.cu
-extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, int, float3*);
+extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, int, float3*, int, int*);
 
 // Auto output
 #define OUTPUT_FRAME_NUM 500
 bool camAtRight = true;	// pos of the camera, true for right side, false for left side
 int waveNum = 0;
 
-Mesh bunnyMesh;
-float3* mesh_verts; // the cuda device pointer that points to the uploaded triangles
-int vertsNum = 0;
+Scene SceneData;
+float3* scene_verts; // the cuda device pointer that points to the uploaded triangles
+int* scene_objs;
 
 // create pixel buffer object in OpenGL
 void createPBO(GLuint *pbo)
@@ -82,11 +82,11 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 
 void initCuda()
 {
-	vertsNum = bunnyMesh.vertsNum;
-	cudaMalloc((void**)& mesh_verts, vertsNum*sizeof(float3));
-	cudaMemcpy(mesh_verts, bunnyMesh.verts, vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
-	// register accu buffer, this buffer won't refresh
-	cudaMalloc(&accu, width * height * sizeof(float3));
+	cudaMalloc((void**)& scene_verts, SceneData.vertsNum *sizeof(float3));
+	cudaMemcpy(scene_verts, SceneData.verts, SceneData.vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)& scene_objs, SceneData.objsNum * sizeof(int));
+	cudaMemcpy(scene_objs, SceneData.objs, SceneData.objsNum * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMalloc(&accu, width * height * sizeof(float3));	// register accu buffer, this buffer won't refresh
 	cudaMalloc(&randState, width * height * sizeof(curandState));
 	createPBO(&pbo);
 	createTexture(&textureID, width, height);
@@ -99,7 +99,8 @@ void runCuda()
 	cudaGraphicsMapResources(1, &resource, 0);
 	cudaGraphicsResourceGetMappedPointer((void**)&result, &num_bytes, resource);
 
-	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, vertsNum, mesh_verts);
+	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, 
+		SceneData.vertsNum, scene_verts, SceneData.objsNum, scene_objs);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -338,9 +339,9 @@ int main(int argc, char **argv)
 
 	
 	initOpenGl();
-	// load mesh before init CUDA!
-	LoadObj("input/vases_set.obj", bunnyMesh);
-	//std::cout << bunnyMesh.verts.size() << std::endl;
+	// load scene before init CUDA! Need mesh data for initialize
+	LoadObj("input/test.obj", SceneData);
+	//std::cout << SceneData.verts.size() << std::endl;
 
 	initCuda();
 	//ImGui_ImplGlut_Init(); // initialize the imgui system
@@ -353,10 +354,10 @@ int main(int argc, char **argv)
 
 	cudaFree(result);
 	cudaFree(accu);
-	cudaFree(mesh_verts);
+	cudaFree(scene_verts);
 	cudaFree(randState);
 
-	delete[] bunnyMesh.verts;
+	delete[] SceneData.verts;
 
 	return 0;
 }

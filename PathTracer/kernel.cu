@@ -235,7 +235,15 @@ __constant__ Cone cones[] = {
 	{15,	{100.0f, 80.0f, 500.0f},	{0.0f, -1.0f, 0.0f},	mat_rubber,	37.0f + 273.15f,	DIFF}
 };
 
-__device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, int vertsNum, float3* mesh_verts)
+// for test
+__constant__ int matList[] = {
+	mat_glass,
+	mat_brick,
+	mat_glass
+};
+
+__device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, 
+	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_vertsNum)
 {
 	float d = 1e20;
 	float INF = 1e20;
@@ -267,18 +275,28 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, int vertsNu
 	//}
 
 	// intersect all triangles in the scene
+	int currentObj = 0;	// current object max vert = scene_objs_vertsNum[currentObj]
 	for (int i = 0; i < vertsNum/3; i++)
 	{
-		float3 v0 = mesh_verts[i*3];
-		float3 v1 = mesh_verts[i*3 + 1];
-		float3 v2 = mesh_verts[i*3 + 2];
+		float3 v0 = scene_verts[i*3];
+		float3 v1 = scene_verts[i*3 + 1];
+		float3 v2 = scene_verts[i*3 + 2];
+		int currentVert = i * 3 + 2;
+		// which object?
+		if (currentObj + 1 < objsNum)
+		{
+			// move to next obj
+			if (currentVert >= scene_objs_vertsNum[currentObj + 1]) currentObj++;
+		}
 		if ((d = TriangleIntersect(ray, v0, v1, v2)) && d < bestHit.hitDist && d > 0)
 		{
+			// make sure matList has enough mat for each obj!!!
+			bestHit.matName = matList[currentObj];
 			bestHit.hitDist = d;
 			bestHit.geomtryType = TRIANGLE;
 			bestHit.normal = normalize(cross(v1-v0, v2-v0));
 			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
-			bestHit.matName = mat_glass;
+			
 			bestHit.temperature = 100.0f + 273.15f;
 			bestHit.reflectType = DIFF;
 		}
@@ -338,7 +356,8 @@ struct RecursionData
 
 // radiance function
 // compute path bounces in scene and accumulate returned color from each path sgment
-__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index, int vertsNum, float3* mesh_verts) { 
+__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index, 
+	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_vertsNum) {
 
 	Hit bestHit;
 	// accumulated color for current pixel
@@ -347,7 +366,7 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 
 	//// hit debug
 	//bestHit.Init();
-	//if (!intersect_scene(ray, bestHit, vertsNum, mesh_verts))
+	//if (!intersect_scene(ray, bestHit, vertsNum, scene_verts))
 	//	return 0.0f; // if miss, return black
 	//else
 	//{
@@ -364,9 +383,15 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		bounces++;
 		bestHit.Init();
 		recuData[bounces].init();
+		float emi = 0.0f;
+		float rt = 0.0f;
 		// intersect ray with scene
-		if (!intersect_scene(ray, bestHit, vertsNum, mesh_verts))
+		if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_vertsNum))
 		{
+			// sky color
+			emi = (BBp(10.0 + 273.15f, wave[waveNum]));
+			rt = 0.0f;
+			recuData[bounces].add(emi, rt);
 			break; // if miss STOP looping, will influnce the output of recuData since already return 
 		}
 
@@ -374,8 +399,8 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		bestHit.emissivity = emiLib[waveNum][bestHit.matName];
 		// save current emission and reflectivity
 		
-		float emi = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
-		float rt = 1.0f - bestHit.emissivity;
+		emi = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
+		rt = 1.0f - bestHit.emissivity;
 		recuData[bounces].add(emi, rt);
 
 		float3 hitPosition = ray.origin + ray.direction * bestHit.hitDist;
@@ -405,11 +430,12 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 	}
 
 	// data start from 1
+	// plus reflection result
 	for (int i = bounces; i > 1; i--)
 	{
 		accuIntensity += recuData[i].emission * recuData[i - 1].reflectivity;
 	}
-	// if show reflection only?
+	// plus emission result
 	accuIntensity += recuData[1].emission;
 	return accuIntensity;
 
@@ -426,7 +452,9 @@ __device__ float3 gammaCorrect(float3 c)
 	return g;
 }
 
-__global__ void render(float3 *result, float3* accumbuffer, curandState* randSt, int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum, int vertsNum, float3* mesh_verts)
+__global__ void render(float3 *result, float3* accumbuffer, curandState* randSt, 
+	int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum, 
+	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_vertsNum)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -456,7 +484,7 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		float3 screen = make_float3(uv.x * width + room_width/2.0f, -uv.y * height + room_width/2.0f, 1100.0f - (width/2.0f)* 1.73205080757f);
 		float3 dir = normalize(screen - cam.origin);
 		//result[index] = make_float3(dir.x);
-		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index, vertsNum, mesh_verts);
+		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index, vertsNum, scene_verts, objsNum, scene_objs_vertsNum);
 		pixelColor = make_float3(intensity);
 
 		accumbuffer[index] += pixelColor;
@@ -467,7 +495,11 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 	result[index] = tempCol;
 }
 
-extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* randState, unsigned int w, unsigned int h, unsigned int frame, bool camAtRight, int waveNum, int vertsNum, float3* mesh_verts) {
+extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* randState, 
+	unsigned int w, unsigned int h, unsigned int frame, 
+	bool camAtRight, int waveNum, 
+	int vertsNum, float3* scene_verts, 
+	int objsNum, int* scene_objs_vertsNum) {
 
 	//set thread number
 	int tx = 32;
@@ -476,7 +508,9 @@ extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* 
 	dim3 blocks(w / tx + 1, h / ty + 1);
 	dim3 threads(tx, ty);
 	
-	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), camAtRight, waveNum,vertsNum, mesh_verts);
+	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), 
+		camAtRight, waveNum,
+		vertsNum, scene_verts, objsNum, scene_objs_vertsNum);
 
 	cudaThreadSynchronize();
 	checkCUDAError("kernel failed!");

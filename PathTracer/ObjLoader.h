@@ -3,20 +3,23 @@
 #include <vector>
 #include "cutil_math.h"
 
-struct Mesh
+struct Scene
 {
-	int vertsNum;
-	float3* verts;
+	int vertsNum;	// vertices number of the scene
+	float3* verts;	// pointer for all vertices
+	int objsNum;
+	int* objs;		// pointer for obj's verts start num
 	std::vector<float2> uvs;
 	std::vector<float3> normals;
 };
 
 bool LoadObj(
 	const char* path,
-	Mesh &mesh
+	Scene &scene
 )
 {
 	std::vector<int> vertexIndices, uvIndices, normalIndices;
+	std::vector<int> temp_object_indices;
 	std::vector<float3> temp_vertices;
 	std::vector<float2> temp_uvs;
 	std::vector<float3> temp_normals;
@@ -35,7 +38,12 @@ bool LoadObj(
 			break; // EOF = End Of File. Quit the loop.
 
 		// else : parse lineHeader
-		if (strcmp(lineHeader, "v") == 0) {
+		if (strcmp(lineHeader, "o") == 0) {
+			char objectName[128];
+			fscanf(file, "%s\n", objectName);
+			temp_object_indices.push_back(vertexIndices.size());
+		}
+		else if (strcmp(lineHeader, "v") == 0) {
 			float3 vertex;
 			fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z);
 			temp_vertices.push_back(vertex);
@@ -69,9 +77,17 @@ bool LoadObj(
 			normalIndices.push_back(normalIndex[2]);
 		}
 	}
+	scene.objsNum = temp_object_indices.size();
+	scene.objs = new int[scene.objsNum];
+	for (unsigned int i = 0; i < temp_object_indices.size(); i++)
+	{
+		scene.objs[i] = temp_object_indices[i];
+		std::cout << scene.objs[i] << " ";
+	}
+	std::cout << std::endl;
 	std::cout << "verts num: " << vertexIndices.size() << std::endl;
-	mesh.vertsNum = vertexIndices.size();
-	mesh.verts = new float3[mesh.vertsNum];
+	scene.vertsNum = vertexIndices.size();
+	scene.verts = new float3[scene.vertsNum];
 	for (unsigned int i = 0; i < vertexIndices.size(); i++)
 	{
 		unsigned int vertexIndex = vertexIndices[i];
@@ -79,7 +95,7 @@ bool LoadObj(
 		vertex.x += 150.0f;
 		//vertex.y += 50.0f;
 		vertex.z += 500.0f;
-		mesh.verts[i] = vertex;
+		scene.verts[i] = vertex;
 		//std::cout << vertex.x << " " << vertex.y << " " << vertex.z << std::endl;
 	}
 	//std::cout << "uvs num: " << uvIndices.size() << std::endl;
@@ -87,7 +103,7 @@ bool LoadObj(
 	{
 		unsigned int uvIndex = uvIndices[i];
 		float2 uv = temp_uvs[uvIndex - 1];
-		mesh.uvs.push_back(uv);
+		scene.uvs.push_back(uv);
 		//std::cout << uv.x << " " << uv.y << std::endl;
 	}
 	//std::cout << "normals num: " << normalIndices.size() << std::endl;
@@ -95,7 +111,7 @@ bool LoadObj(
 	{
 		unsigned int normalIndex = normalIndices[i];
 		float3 normal = temp_normals[normalIndex - 1];
-		mesh.normals.push_back(normal);
+		scene.normals.push_back(normal);
 		//std::cout << normal.x << " " << normal.y << " " << normal.z << std::endl;
 	}
 	return true;
