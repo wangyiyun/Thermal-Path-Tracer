@@ -40,18 +40,34 @@ curandState* randState;
 
 // Implement of this function is in kernel.cu
 extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, 
-	int, float3*, int, int*, float2*, float3*);
+	int, float3*, int, int*, float2*, float3*,
+	int, int*, float3*);
 
 // Auto output
 #define OUTPUT_FRAME_NUM 500
 bool camAtRight = true;	// pos of the camera, true for right side, false for left side
 int waveNum = 0;
 
+// host
 Scene SceneData;
+// device
 float3* scene_verts; // the cuda device pointer that points to the uploaded triangles
 int* scene_objs;
 float2* scene_uvs;
 float3* scene_normals;
+
+// host
+Texture tex_mug_normal;
+Texture tex_table_ambient;
+std::vector<Texture> textures;
+int texNum;
+int tex_data_size;	// pixels num of all textures
+int* h_tex_wh;		// [w0,h0,w1,h1...] size = texNum * 2
+float3* h_tex_data;	// pixels color of all textures
+
+// device
+int* d_tex_wh;	//[w0,h0,w1,h1...] size = texNum * 2
+float3* d_tex_data;
 
 //void draw_gui()
 //{
@@ -91,21 +107,57 @@ void createTexture(GLuint *textureID, unsigned int size_x, unsigned int size_y)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
-void matchTex()
+void prepareTextures()
+{
+	texNum = textures.size();
+	tex_data_size = 0;
+	h_tex_wh = new int[texNum * 2];
+	for (int i = 0; i < texNum; i++)
+	{
+		tex_data_size += textures[i].width * textures[i].height;
+		h_tex_wh[i * 2] = textures[i].width;
+		h_tex_wh[i * 2 + 1] = textures[i].height;
+	}
+	int pixelsCount = 0;
+	h_tex_data = new float3[tex_data_size];
+	for (int i = 0; i < texNum; i++)
+	{
+		for (int j = 0; j < tex_data_size; j++)
+		{
+			// color channel: BGRA in FreeImage bytes, alpha is not used in this project
+			// Red
+			h_tex_data[pixelsCount].x = textures[i].imgData[j * 4 + 2] / 255.0f;
+			// Green
+			h_tex_data[pixelsCount].y = textures[i].imgData[j * 4 + 1] / 255.0f;
+			// Blue
+			h_tex_data[pixelsCount].z = textures[i].imgData[j * 4] / 255.0f;
+
+			pixelsCount++;
+			
+		}
+	}
+	//std::cout << h_tex_data[0].x << " " << h_tex_data[0].y << " " << h_tex_data[0].z << std::endl;
+	//// Convert to FreeImage format & save to file
+	//FIBITMAP* image = FreeImage_ConvertFromRawBits(textures[0].imgData, textures[0].width, textures[0].height, textures[0].pitch, 32, FI_RGBA_RED_MASK, FI_RGBA_GREEN_MASK, FI_RGBA_BLUE_MASK, false);
+	//FreeImage_Save(FIF_BMP, image, "input/test.bmp", 0);
+	//// Free resources
+	//FreeImage_Unload(image);
+}
+
+void setObjInfo()
 {
 	std::cout << "mat_human = 0, mat_marble = 1, mat_paint = 2, mat_glass = 3, mat_rubber = 4"<< std::endl;
 	std::cout << "mat_brass = 5, mat_road = 6, mat_al = 7, mat_al2o3 = 8, mat_brick = 9" << std::endl;
+	std::cout << "tex_mug_normal = 0, tex_table_ambient = 1" << std::endl;
 	std::cout << "If don't have texture, input -1" << std::endl;
 	for (unsigned int i = 0; i < SceneData.objsNum; i++)
 	{
-		// [objVertsNum, matNum, uvTexNum, ambTexNum]
+		// [objVertsNum, matNum, normalTexNum, ambientTexNum]
 		std::cout << "Current object name is :";
 		std::cout << SceneData.objNames[i] << std::endl;
-		//std::cout << "Verts start from:";
-		//std::cout << SceneData.objsInfo[i * 4] << std::endl;
-		std::cout << "The mat number is:";
-		std::cin >> SceneData.objsInfo[i * 4 + 1];
-		//std::cout << "The uv texture number is:";
+		//std::cout << "The mat number is:";
+		//std::cin >> SceneData.objsInfo[i * 4 + 1];
+		//std::cout << "The normal texture number is:";
 		//std::cin >> SceneData.objsInfo[i * 4 + 2];
 		//std::cout << "The ambient texture number is:";
 		//std::cin >> SceneData.objsInfo[i * 4 + 3];
@@ -117,7 +169,7 @@ void initCuda()
 	// all verts in scene
 	cudaMalloc((void**)& scene_verts, SceneData.vertsNum *sizeof(float3));
 	cudaMemcpy(scene_verts, SceneData.verts, SceneData.vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
-	// all objects and info	[objVertsNum, matNum, uvTexNum, ambTexNum]
+	// all objects and info	[objVertsNum, matNum, normalTexNum, ambientTexNum]
 	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 4 * sizeof(int));
 	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 4 * sizeof(int), cudaMemcpyHostToDevice);
 	// all uvs at each vert
@@ -126,8 +178,15 @@ void initCuda()
 	// all normals at each vert
 	cudaMalloc((void**)& scene_normals, (SceneData.vertsNum/3) * sizeof(float3));
 	cudaMemcpy(scene_normals, SceneData.normals, (SceneData.vertsNum/3) * sizeof(float3), cudaMemcpyHostToDevice);
+	// width and height for each texture
+	cudaMalloc((void**)& d_tex_wh, texNum * 2 * sizeof(int));
+	cudaMemcpy(d_tex_wh, h_tex_wh, texNum * 2 * sizeof(int), cudaMemcpyHostToDevice);
+	// all pixles for all data
+	cudaMalloc((void**)& d_tex_data, tex_data_size * sizeof(float3));
+	cudaMemcpy(d_tex_data, h_tex_data, tex_data_size * sizeof(float3), cudaMemcpyHostToDevice);
+	// Buffer for Monte Carlo
 	cudaMalloc(&accu, width * height * sizeof(float3));	// register accu buffer, this buffer won't refresh
-	cudaMalloc(&randState, width * height * sizeof(curandState));
+	cudaMalloc(&randState, width * height * sizeof(curandState));	// each pixel's random seed per frame
 	createPBO(&pbo);
 	createTexture(&textureID, width, height);
 }
@@ -141,7 +200,8 @@ void runCuda()
 
 	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, 
 		SceneData.vertsNum, scene_verts, SceneData.objsNum, scene_objs,
-		scene_uvs, scene_normals);
+		scene_uvs, scene_normals,
+		texNum,d_tex_wh, d_tex_data);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -233,7 +293,7 @@ void AutoOutput()	// output a result when achieve 8000 frame
 	std::cout << "Saved file: " << fileName << std::endl;
 
 	//// Convert to FreeImage format & save to file
-	//FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, width, height, 3 * width, 24, 0x0000FF, 0xFF0000, 0x00FF00, false);
+	//FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, width, height, 3 * width, 32, 0x0000FF, 0xFF0000, 0x00FF00, false);
 	//FreeImage_Save(FIF_BMP, image, files[fileNum], 0);
 	//// Free resources
 	//FreeImage_Unload(image);
@@ -381,9 +441,17 @@ int main(int argc, char **argv)
 	
 	initOpenGl();
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/scene2.obj", SceneData);
-	// LoadTex("input/texture/...", TexData?);
-	matchTex();
+	LoadObj("input/test.obj", SceneData);
+	// load texture
+	//tex_mug_normal.LoadTex("input/texture/mug_normal.jpg");
+	//textures.push_back(tex_mug_normal);
+	//tex_table_ambient.LoadTex("input/texture/table_ambient.jpg");
+	//textures.push_back(tex_table_ambient);
+	tex_table_ambient.LoadTex("input/texture/test_tex.jpg");
+	textures.push_back(tex_table_ambient);
+	// set all data to 
+	prepareTextures();
+	setObjInfo();
 	//std::cout << SceneData.verts.size() << std::endl;
 
 	initCuda();
@@ -397,11 +465,20 @@ int main(int argc, char **argv)
 
 	cudaFree(result);
 	cudaFree(accu);
+	cudaFree(randState);
 	cudaFree(scene_verts);
 	cudaFree(scene_objs);
-	cudaFree(randState);
+	cudaFree(scene_uvs);
+	cudaFree(scene_normals);
+	cudaFree(d_tex_wh);
+	cudaFree(d_tex_data);
 
+
+	delete[] h_tex_wh;
+	delete[] h_tex_data;
 	SceneData.FreeScene();
+	tex_mug_normal.FreeTexture();
+	tex_table_ambient.FreeTexture();
 
 	return 0;
 }

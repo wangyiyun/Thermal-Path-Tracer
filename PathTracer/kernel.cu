@@ -125,6 +125,7 @@ struct Hit
 	Refl_t reflectType;
 	Geom_t geomtryType;
 	int geomID;
+	float3 color;	// just for texture debug
 	__device__ void Init() {
 		hitDist = 1e20;
 		normal = make_float3(0.0f);
@@ -136,6 +137,7 @@ struct Hit
 		reflectType = DIFF;
 		geomtryType = SPHERE;
 		geomID = -1;
+		color = make_float3(0.0f);
 	}
 };
 
@@ -182,12 +184,12 @@ struct Cone {
 	}
 };
 
-__device__ float TriangleIntersect(const Ray& ray, float3 vert0, float3 vert1, float3 vert2)
+__device__ float TriangleIntersect(const Ray& ray, float3 vert0, float3 vert1, float3 vert2, float &u, float &v)
 {
 	// find vectors for two edges sharing vert0
 	float3 edge1 = vert1 - vert0;
 	float3 edge2 = vert2 - vert0;
-	float u, v, t;
+	float t;
 	// begin calculating determinant - also used to calculate U parameter
 	float3 pvec = cross(ray.direction, edge2);
 	// if determinant is near zero, ray lies in plane of triangle
@@ -237,7 +239,8 @@ __constant__ Cone cones[] = {
 
 __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, 
 	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_info,
-	float2* scene_uvs, float3* scene_normals)
+	float2* scene_uvs, float3* scene_normals,
+	int texNum, int* tex_wh, float3* tex_data)
 {
 	float d = 1e20;
 	float INF = 1e20;
@@ -273,25 +276,79 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 	int facesNum = vertsNum / 3;
 	for (int i = 0; i < facesNum; i++)
 	{
-		float3 v0 = scene_verts[i*3];
-		float3 v1 = scene_verts[i*3 + 1];
-		float3 v2 = scene_verts[i*3 + 2];
+		float3 v0 = scene_verts[i * 3];
+		float3 v1 = scene_verts[i * 3 + 1];
+		float3 v2 = scene_verts[i * 3 + 2];
 		int currentVert = i * 3 + 2;
+		// u, v, 1-u-v; 
+		float u = 0; 
+		float v = 0;
 		// which object?
 		if (currentObj + 1 < objsNum)
 		{
 			// move to next obj
 			if (currentVert >= scene_objs_info[(currentObj + 1) * 4]) currentObj++;
 		}
-		if ((d = TriangleIntersect(ray, v0, v1, v2)) && d < bestHit.hitDist && d > 0)
+		if ((d = TriangleIntersect(ray, v0, v1, v2, u, v)) && d < bestHit.hitDist && d > 0)
 		{
-			// [objVertsNum, matNum, uvTexNum, ambTexNum]
-			bestHit.matName = scene_objs_info[currentObj * 4 + 1];	//matNum
+			float2 uv0 = scene_uvs[i * 3];
+			float2 uv1 = scene_uvs[i * 3 + 1];
+			float2 uv2 = scene_uvs[i * 3 + 2];
+			float w = 1 - u - v;
+			float2 uv = u*uv0 + v*uv1 + w*uv2;
+			//bestHit.color = make_float3(uv.x, uv.y, 0);
+		
+			//bestHit.color = tex_data[0];
+			// [objVertsNum, matNum, normalTexNum, ambientTexNum]
+			// do not have a normal texture
+			if (scene_objs_info[currentObj * 4 + 2] == -1)
+			{
+				bestHit.normal = normalize(scene_normals[i]);
+			}
+			else
+			{
+				// find normal tex in all textures
+				int texIndex = scene_objs_info[currentObj * 4 + 2];
+				int texWidth = tex_wh[texIndex * 2];
+				int texHeight = tex_wh[texIndex * 2 + 1];
+				int offset = 0;	// get pixel offset in tex_data
+				for (int t = 0; t < texIndex; t++)
+				{
+					offset += tex_wh[t * 2] * tex_wh[t * 2 + 1];
+				}
+				// map current uv(float2) to index in tex_data[]
+				int u_index = uv.x * texWidth;
+				int v_index = uv.y * texHeight;
+				// map the color in tex_data[offset + u_index*texWidth + v_index] to normal
+				bestHit.normal = normalize(tex_data[offset + u_index * texWidth + v_index] * 2.0f - 1.0f);
+			}
+			// do not have an ambient texture
+			if (scene_objs_info[currentObj * 4 + 3] == -1)
+			{
+				bestHit.matName = scene_objs_info[currentObj * 4 + 1];	//matNum
+			}
+			else
+			{
+				// find normal tex in all textures
+				int texIndex = scene_objs_info[currentObj * 4 + 3];
+				int texWidth = tex_wh[texIndex * 2];
+				int texHeight = tex_wh[texIndex * 2 + 1];
+				int offset = 0;	// get pixel offset in tex_data
+				for (int t = 0; t < texIndex; t++)
+				{
+					offset += tex_wh[t * 2] * tex_wh[t * 2 + 1];
+				}
+				// map current uv(float2) to index in tex_data[]
+				int u_index = uv.x * texWidth;
+				int v_index = uv.y * texHeight;
+				// map the color in tex_data[offset + u_index*texWidth + v_index] to emissivity
+				bestHit.emissivity = tex_data[offset + u_index * texWidth + v_index].x;
+				bestHit.color = tex_data[offset + u_index * texWidth + v_index];
+			}
+			
 			bestHit.hitDist = d;
 			bestHit.geomtryType = TRIANGLE;
-			bestHit.normal = normalize(scene_normals[i]);
 			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
-			
 			bestHit.temperature = 200.0f + 273.15f;
 			bestHit.reflectType = DIFF;
 		}
@@ -351,26 +408,29 @@ struct RecursionData
 
 // radiance function
 // compute path bounces in scene and accumulate returned color from each path sgment
-__device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index, 
+__device__ float3 radiance(Ray& ray, curandState* randstate, int frameNum, int waveNum, int index, 
 	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_info,
-	float2* scene_uvs, float3* scene_normals) {
+	float2* scene_uvs, float3* scene_normals,
+	int texNum, int* tex_wh, float3* tex_data) {
 
 	Hit bestHit;
 	// accumulated color for current pixel
 	float accuIntensity = 0.0f;
 	RecursionData recuData[10];
 
-	//// hit debug
-	//bestHit.Init();
-	//if (!intersect_scene(ray, bestHit, vertsNum, scene_verts))
-	//	return 0.0f; // if miss, return black
-	//else
-	//{
-	//	bestHit.emissivity = emiLib[waveNum][bestHit.matName];
-	//	accuIntensity = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
-	//	return accuIntensity;
-	//}
-	//// hit debug end
+	// hit debug
+	bestHit.Init();
+	if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
+		texNum, tex_wh, tex_data))
+		return make_float3(0.0f); // if miss, return black
+	else
+	{
+		/*bestHit.emissivity = emiLib[waveNum][bestHit.matName];
+		accuIntensity = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
+		return accuIntensity;*/
+		return bestHit.color;
+	}
+	// hit debug end
 
 	int bounces = 0;
 	while(bounces < 5 || curand_uniform(randstate) < 0.5f)
@@ -382,7 +442,8 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		float emi = 0.0f;
 		float rt = 0.0f;
 		// intersect ray with scene
-		if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals))
+		if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
+							texNum, tex_wh, tex_data))
 		{
 			// sky color
 			emi = (BBp(10.0 + 273.15f, wave[waveNum]));
@@ -392,7 +453,7 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 		}
 
 		// else: we've got a hit with a scene primitive
-		bestHit.emissivity = emiLib[waveNum][bestHit.matName];
+		if(bestHit.matName != -1) bestHit.emissivity = emiLib[waveNum][bestHit.matName];
 		// save current emission and reflectivity
 		
 		emi = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
@@ -433,10 +494,7 @@ __device__ float radiance(Ray& ray, curandState* randstate, int frameNum, int wa
 	}
 	// plus emission result
 	accuIntensity += recuData[1].emission;
-	return accuIntensity;
-
-	// return accumulated color after all bounces are computed
-	return accuIntensity;
+	return make_float3(accuIntensity);
 }
 
 __device__ float3 gammaCorrect(float3 c)
@@ -451,7 +509,8 @@ __device__ float3 gammaCorrect(float3 c)
 __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt, 
 	int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum, 
 	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_info,
-	float2* scene_uvs, float3* scene_normals)
+	float2* scene_uvs, float3* scene_normals,
+	int texNum, int* tex_wh, float3* tex_data)
 {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	int j = threadIdx.y + blockIdx.y * blockDim.y;
@@ -481,9 +540,10 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		float3 screen = make_float3(uv.x * width + room_width/2.0f, -uv.y * height + room_width/2.0f, 1100.0f - (width/2.0f)* 1.73205080757f);
 		float3 dir = normalize(screen - cam.origin);
 		//result[index] = make_float3(dir.x);
-		float intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index, 
-			vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals);
-		pixelColor = make_float3(intensity);
+		float3 intensity = radiance(Ray(cam.origin, dir), &randState, frameNum, waveNum, index, 
+			vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
+			texNum, tex_wh, tex_data);
+		pixelColor = intensity;
 
 		accumbuffer[index] += pixelColor;
 	}
@@ -498,7 +558,8 @@ extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* 
 	bool camAtRight, int waveNum, 
 	int vertsNum, float3* scene_verts, 
 	int objsNum, int* scene_objs_info,
-	float2* scene_uvs, float3* scene_normals) {
+	float2* scene_uvs, float3* scene_normals,
+	int texNum, int* tex_wh, float3* tex_data) {
 
 	//set thread number
 	int tx = 32;
@@ -509,7 +570,8 @@ extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* 
 	
 	render <<<blocks, threads >>> (result, accumbuffer, randState, w, h, frame, WangHash(frame), 
 		camAtRight, waveNum,
-		vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals);
+		vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
+		texNum, tex_wh, tex_data);
 
 	cudaThreadSynchronize();
 	checkCUDAError("kernel failed!");
