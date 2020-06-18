@@ -295,10 +295,8 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 			float2 uv1 = scene_uvs[i * 3 + 1];
 			float2 uv2 = scene_uvs[i * 3 + 2];
 			float w = 1 - u - v;
-			float2 uv = u*uv0 + v*uv1 + w*uv2;
+			float2 uv = w*uv0 + u*uv1 + v*uv2;
 			//bestHit.color = make_float3(uv.x, uv.y, 0);
-		
-			//bestHit.color = tex_data[0];
 			// [objVertsNum, matNum, normalTexNum, ambientTexNum]
 			// do not have a normal texture
 			if (scene_objs_info[currentObj * 4 + 2] == -1)
@@ -343,7 +341,7 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 				int v_index = uv.y * texHeight;
 				// map the color in tex_data[offset + u_index*texWidth + v_index] to emissivity
 				bestHit.emissivity = tex_data[offset + u_index * texWidth + v_index].x;
-				bestHit.color = tex_data[offset + u_index * texWidth + v_index];
+				//bestHit.color = tex_data[offset + u_index * texWidth + v_index];
 			}
 			
 			bestHit.hitDist = d;
@@ -418,19 +416,19 @@ __device__ float3 radiance(Ray& ray, curandState* randstate, int frameNum, int w
 	float accuIntensity = 0.0f;
 	RecursionData recuData[10];
 
-	// hit debug
-	bestHit.Init();
-	if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
-		texNum, tex_wh, tex_data))
-		return make_float3(0.0f); // if miss, return black
-	else
-	{
-		/*bestHit.emissivity = emiLib[waveNum][bestHit.matName];
-		accuIntensity = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
-		return accuIntensity;*/
-		return bestHit.color;
-	}
-	// hit debug end
+	//// hit debug
+	//bestHit.Init();
+	//if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
+	//	texNum, tex_wh, tex_data))
+	//	return make_float3(0.0f); // if miss, return black
+	//else
+	//{
+	//	/*bestHit.emissivity = emiLib[waveNum][bestHit.matName];
+	//	accuIntensity = (BBp(bestHit.temperature, wave[waveNum]) * bestHit.emissivity);
+	//	return accuIntensity;*/
+	//	return bestHit.color;
+	//}
+	//// hit debug end
 
 	int bounces = 0;
 	while(bounces < 5 || curand_uniform(randstate) < 0.5f)

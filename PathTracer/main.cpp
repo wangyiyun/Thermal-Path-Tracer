@@ -120,23 +120,28 @@ void prepareTextures()
 	}
 	int pixelsCount = 0;
 	h_tex_data = new float3[tex_data_size];
+	int offset = 0;
 	for (int i = 0; i < texNum; i++)
 	{
-		for (int j = 0; j < tex_data_size; j++)
+		for (int w = 0; w < textures[i].width; w++)
 		{
-			// color channel: BGRA in FreeImage bytes, alpha is not used in this project
-			// Red
-			h_tex_data[pixelsCount].x = textures[i].imgData[j * 4 + 2] / 255.0f;
-			// Green
-			h_tex_data[pixelsCount].y = textures[i].imgData[j * 4 + 1] / 255.0f;
-			// Blue
-			h_tex_data[pixelsCount].z = textures[i].imgData[j * 4] / 255.0f;
+			for (int h = 0 ; h < textures[i].height; h++)
+			{
+				int index = w * textures[i].width + h;
+				// color channel: BGRA in FreeImage bytes, alpha is not used in this project
+				// Red
+				h_tex_data[index + offset].x = textures[i].imgData[index * 4 + 2] / 255.0f;
+				// Green
+				h_tex_data[index + offset].y = textures[i].imgData[index * 4 + 1] / 255.0f;
+				// Blue
+				h_tex_data[index + offset].z = textures[i].imgData[index * 4] / 255.0f;
 
-			pixelsCount++;
-			
+				pixelsCount++;
+			}		
 		}
+		offset += textures[i].width * textures[i].height;
 	}
-	//std::cout << h_tex_data[0].x << " " << h_tex_data[0].y << " " << h_tex_data[0].z << std::endl;
+	//std::cout << h_tex_data[1048575].x << " " << h_tex_data[1048575].y << " " << h_tex_data[1048575].z << std::endl;
 	//// Convert to FreeImage format & save to file
 	//FIBITMAP* image = FreeImage_ConvertFromRawBits(textures[0].imgData, textures[0].width, textures[0].height, textures[0].pitch, 32, FI_RGBA_RED_MASK, FI_RGBA_GREEN_MASK, FI_RGBA_BLUE_MASK, false);
 	//FreeImage_Save(FIF_BMP, image, "input/test.bmp", 0);
@@ -157,10 +162,10 @@ void setObjInfo()
 		std::cout << SceneData.objNames[i] << std::endl;
 		//std::cout << "The mat number is:";
 		//std::cin >> SceneData.objsInfo[i * 4 + 1];
-		//std::cout << "The normal texture number is:";
-		//std::cin >> SceneData.objsInfo[i * 4 + 2];
-		//std::cout << "The ambient texture number is:";
-		//std::cin >> SceneData.objsInfo[i * 4 + 3];
+		std::cout << "The normal texture number is:";
+		std::cin >> SceneData.objsInfo[i * 4 + 2];
+		std::cout << "The ambient texture number is:";
+		std::cin >> SceneData.objsInfo[i * 4 + 3];
 	}
 }
 
@@ -441,14 +446,14 @@ int main(int argc, char **argv)
 	
 	initOpenGl();
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/test.obj", SceneData);
+	LoadObj("input/scene2.obj", SceneData);
 	// load texture
-	//tex_mug_normal.LoadTex("input/texture/mug_normal.jpg");
-	//textures.push_back(tex_mug_normal);
-	//tex_table_ambient.LoadTex("input/texture/table_ambient.jpg");
-	//textures.push_back(tex_table_ambient);
-	tex_table_ambient.LoadTex("input/texture/test_tex.jpg");
+	tex_mug_normal.LoadTex("input/texture/mug_normal.jpg");
+	textures.push_back(tex_mug_normal);
+	tex_table_ambient.LoadTex("input/texture/table_ambient.jpg");
 	textures.push_back(tex_table_ambient);
+	//tex_table_ambient.LoadTex("input/texture/test_tex.jpg");
+	//textures.push_back(tex_table_ambient);
 	// set all data to 
 	prepareTextures();
 	setObjInfo();

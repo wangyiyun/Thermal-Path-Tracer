@@ -92,9 +92,9 @@ bool LoadObj(
 	{
 		// [objVertsNum, matNum, normalTexNum, ambientTexNum]
 		scene.objsInfo[i * 4] = temp_object_indices[i];	//objVertsNum
-		scene.objsInfo[i * 4 + 1] = 0;	//matNum
+		scene.objsInfo[i * 4 + 1] = 1;	//matNum
 		scene.objsInfo[i * 4 + 2] = -1;	//normalTexNum
-		scene.objsInfo[i * 4 + 3] = 0;	//ambientTexNum
+		scene.objsInfo[i * 4 + 3] = -1;	//ambientTexNum
 	}
 	
 	scene.vertsNum = vertexIndices.size();
