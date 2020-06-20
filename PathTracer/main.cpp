@@ -41,12 +41,14 @@ curandState* randState;
 // Implement of this function is in kernel.cu
 extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, 
 	int, float3*, int, int*, float2*, float3*,
-	int, int*, float3*);
+	int, int*, float3*,
+	int);
 
 // Auto output
 #define OUTPUT_FRAME_NUM 500
 bool camAtRight = true;	// pos of the camera, true for right side, false for left side
 int waveNum = 0;
+int type = 0;	// 0: emi+refl, 1: emi, 2: refl
 
 // host
 Scene SceneData;
@@ -151,21 +153,28 @@ void prepareTextures()
 
 void setObjInfo()
 {
+	std::cout << "----------MAT NUMBER----------" << std::endl;
 	std::cout << "mat_human = 0, mat_marble = 1, mat_paint = 2, mat_glass = 3, mat_rubber = 4"<< std::endl;
 	std::cout << "mat_brass = 5, mat_road = 6, mat_al = 7, mat_al2o3 = 8, mat_brick = 9" << std::endl;
+	std::cout << "----------TEX NUMBER----------" << std::endl;
 	std::cout << "tex_mug_normal = 0, tex_table_ambient = 1" << std::endl;
 	std::cout << "If don't have texture, input -1" << std::endl;
+	std::cout << "---------TEMPERATURE----------" << std::endl;
+	std::cout << "In put temperature in centigrade scale" << std::endl;
 	for (unsigned int i = 0; i < SceneData.objsNum; i++)
 	{
 		// [objVertsNum, matNum, normalTexNum, ambientTexNum]
+		std::cout << "-------------------------------" << std::endl;
 		std::cout << "Current object name is :";
 		std::cout << SceneData.objNames[i] << std::endl;
-		//std::cout << "The mat number is:";
-		//std::cin >> SceneData.objsInfo[i * 4 + 1];
+		std::cout << "The mat number is:";
+		std::cin >> SceneData.objsInfo[i * 5 + 1];
 		std::cout << "The normal texture number is:";
-		std::cin >> SceneData.objsInfo[i * 4 + 2];
+		std::cin >> SceneData.objsInfo[i * 5 + 2];
 		std::cout << "The ambient texture number is:";
-		std::cin >> SceneData.objsInfo[i * 4 + 3];
+		std::cin >> SceneData.objsInfo[i * 5 + 3];
+		std::cout << "The temperature is:";
+		std::cin >> SceneData.objsInfo[i * 5 + 4];
 	}
 }
 
@@ -175,8 +184,8 @@ void initCuda()
 	cudaMalloc((void**)& scene_verts, SceneData.vertsNum *sizeof(float3));
 	cudaMemcpy(scene_verts, SceneData.verts, SceneData.vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
 	// all objects and info	[objVertsNum, matNum, normalTexNum, ambientTexNum]
-	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 4 * sizeof(int));
-	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 4 * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 5 * sizeof(int));
+	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 5 * sizeof(int), cudaMemcpyHostToDevice);
 	// all uvs at each vert
 	cudaMalloc((void**)& scene_uvs, SceneData.vertsNum * sizeof(float2));
 	cudaMemcpy(scene_uvs, SceneData.uvs, SceneData.vertsNum * sizeof(float2), cudaMemcpyHostToDevice);
@@ -206,7 +215,7 @@ void runCuda()
 	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, 
 		SceneData.vertsNum, scene_verts, SceneData.objsNum, scene_objs,
 		scene_uvs, scene_normals,
-		texNum,d_tex_wh, d_tex_data);
+		texNum,d_tex_wh, d_tex_data, type);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -267,8 +276,19 @@ void AutoOutput()	// output a result when achieve 8000 frame
 
 	std::ofstream outfile;
 	std::string  fileName;	// output/wave_?_cam_?.txt
-	fileName += "output/wave_";
-	fileName += std::to_string(waveNum);
+	fileName += "output/";
+	if (type == 0)
+	{
+		fileName += "emi_and_refl";
+	}
+	else if (type == 1)
+	{
+		fileName += "emi_only";
+	}
+	else
+	{
+		fileName += "refl_only";
+	}
 	fileName += "_cam_";
 	if (camAtRight) fileName += "right.txt";
 	else fileName += "left.txt";
@@ -304,7 +324,7 @@ void AutoOutput()	// output a result when achieve 8000 frame
 	//FreeImage_Unload(image);
 
 	fileNum++;
-	if (fileNum >= 22) std::cout << "Output finished!" << std::endl;
+	if (fileNum >= 6) std::cout << "Output finished!" << std::endl;
 	delete[] pixels;
 	outfile.close();
 }
@@ -316,16 +336,16 @@ void idle()
 {
 	frame++;	// accumulate frame number
 
-	////Auto output for all results
-	//if (frame > OUTPUT_FRAME_NUM && waveNum < 11)	// enough sample for current scene
-	//{
-	//	AutoOutput();
-	//	if (camAtRight == false) waveNum++;
-	//	camAtRight = !camAtRight;
-	//	frame = 0;
-	//	initCuda();
-	//}
-	//if (waveNum >= 11) return;	// pause the program
+	//Auto output for all results
+	if (frame > OUTPUT_FRAME_NUM && type < 3)	// enough sample for current scene
+	{
+		AutoOutput();
+		if (camAtRight == false) type++;
+		camAtRight = !camAtRight;
+		frame = 0;
+		initCuda();
+	}
+	if (type >= 3) return;	// pause the program
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// clear current display result on the screen
 	runCuda();	// run CUDA program and calculate current frame result

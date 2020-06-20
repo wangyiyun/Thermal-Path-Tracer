@@ -9,7 +9,7 @@ struct Scene
 	int vertsNum;	// vertices number of the scene, also the number of uvs and normals
 	float3* verts;	// pointer for all vertices
 	int objsNum;
-	int* objsInfo;		// [objVertsNum, matNum, normalTexNum, ambientTexNum]
+	int* objsInfo;		// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature]
 	float2* uvs;
 	float3* normals;
 	std::vector<std::string> objNames;
@@ -87,14 +87,15 @@ bool LoadObj(
 		}
 	}
 	scene.objsNum = temp_object_indices.size();
-	scene.objsInfo = new int[4 * scene.objsNum];
+	scene.objsInfo = new int[5 * scene.objsNum];
 	for (unsigned int i = 0; i < temp_object_indices.size(); i++)
 	{
-		// [objVertsNum, matNum, normalTexNum, ambientTexNum]
-		scene.objsInfo[i * 4] = temp_object_indices[i];	//objVertsNum
-		scene.objsInfo[i * 4 + 1] = 1;	//matNum
-		scene.objsInfo[i * 4 + 2] = -1;	//normalTexNum
-		scene.objsInfo[i * 4 + 3] = -1;	//ambientTexNum
+		// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature]
+		scene.objsInfo[i * 5] = temp_object_indices[i];	//objVertsNum
+		scene.objsInfo[i * 5 + 1] = 1;	//matNum
+		scene.objsInfo[i * 5 + 2] = -1;	//normalTexNum
+		scene.objsInfo[i * 5 + 3] = -1;	//ambientTexNum
+		scene.objsInfo[i * 5 + 4] = 0;	//temperature
 	}
 	
 	scene.vertsNum = vertexIndices.size();
