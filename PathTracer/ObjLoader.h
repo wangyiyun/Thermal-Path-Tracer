@@ -94,8 +94,8 @@ bool LoadObj(
 		scene.objsInfo[i * 5] = temp_object_indices[i];	//objVertsNum
 		scene.objsInfo[i * 5 + 1] = 1;	//matNum
 		scene.objsInfo[i * 5 + 2] = -1;	//normalTexNum
-		scene.objsInfo[i * 5 + 3] = -1;	//ambientTexNum
-		scene.objsInfo[i * 5 + 4] = 0;	//temperature
+		scene.objsInfo[i * 5 + 3] = 0;	//ambientTexNum
+		scene.objsInfo[i * 5 + 4] = 35;	//temperature
 	}
 	
 	scene.vertsNum = vertexIndices.size();

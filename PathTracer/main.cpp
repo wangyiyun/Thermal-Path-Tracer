@@ -12,7 +12,6 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-//#include "imgui_impl_glut.h"
 
 #include "cuda_gl_interop.h"
 
@@ -71,12 +70,10 @@ float3* h_tex_data;	// pixels color of all textures
 int* d_tex_wh;	//[w0,h0,w1,h1...] size = texNum * 2
 float3* d_tex_data;
 
-//void draw_gui()
-//{
-//	ImGui_ImplGlut_NewFrame();
-//	ImGui::ShowDemoWindow();
-//	ImGui::Render();
-//}
+void draw_gui()
+{
+	
+}
 
 // create pixel buffer object in OpenGL
 void createPBO(GLuint *pbo)
@@ -127,7 +124,7 @@ void prepareTextures()
 	{
 		for (int w = 0; w < textures[i].width; w++)
 		{
-			for (int h = 0 ; h < textures[i].height; h++)
+			for (int h = 0; h < textures[i].height; h++)
 			{
 				int index = w * textures[i].width + h;
 				// color channel: BGRA in FreeImage bytes, alpha is not used in this project
@@ -143,7 +140,7 @@ void prepareTextures()
 		}
 		offset += textures[i].width * textures[i].height;
 	}
-	//std::cout << h_tex_data[1048575].x << " " << h_tex_data[1048575].y << " " << h_tex_data[1048575].z << std::endl;
+	//std::cout << h_tex_data[1023].x << " " << h_tex_data[1023].y << " " << h_tex_data[1023].z << std::endl;
 	//// Convert to FreeImage format & save to file
 	//FIBITMAP* image = FreeImage_ConvertFromRawBits(textures[0].imgData, textures[0].width, textures[0].height, textures[0].pitch, 32, FI_RGBA_RED_MASK, FI_RGBA_GREEN_MASK, FI_RGBA_BLUE_MASK, false);
 	//FreeImage_Save(FIF_BMP, image, "input/test.bmp", 0);
@@ -167,14 +164,14 @@ void setObjInfo()
 		std::cout << "-------------------------------" << std::endl;
 		std::cout << "Current object name is :";
 		std::cout << SceneData.objNames[i] << std::endl;
-		std::cout << "The mat number is:";
-		std::cin >> SceneData.objsInfo[i * 5 + 1];
+		//std::cout << "The mat number is:";
+		//std::cin >> SceneData.objsInfo[i * 5 + 1];
 		std::cout << "The normal texture number is:";
 		std::cin >> SceneData.objsInfo[i * 5 + 2];
 		std::cout << "The ambient texture number is:";
 		std::cin >> SceneData.objsInfo[i * 5 + 3];
-		std::cout << "The temperature is:";
-		std::cin >> SceneData.objsInfo[i * 5 + 4];
+		//std::cout << "The temperature is:";
+		//std::cin >> SceneData.objsInfo[i * 5 + 4];
 	}
 }
 
@@ -226,34 +223,8 @@ void runCuda()
 // so currently it won't be used
 void display()
 {
-	//draw_gui();
+	
 }
-const char* files[] =
-{
-	"output/0_r.bmp",
-	"output/0_l.bmp",
-	"output/1_r.bmp",
-	"output/1_l.bmp",
-	"output/2_r.bmp",
-	"output/2_l.bmp",
-	"output/3_r.bmp",
-	"output/3_l.bmp",
-	"output/4_r.bmp",
-	"output/4_l.bmp",
-	"output/5_r.bmp",
-	"output/5_l.bmp",
-	"output/6_r.bmp",
-	"output/6_l.bmp",
-	"output/7_r.bmp",
-	"output/7_l.bmp",
-	"output/8_r.bmp",
-	"output/8_l.bmp",
-	"output/9_r.bmp",
-	"output/9_l.bmp",
-	"output/10_r.bmp",
-	"output/10_l.bmp",
-};
-
 
 float clamp(float n)
 {
@@ -276,7 +247,7 @@ void AutoOutput()	// output a result when achieve 8000 frame
 
 	std::ofstream outfile;
 	std::string  fileName;	// output/wave_?_cam_?.txt
-	fileName += "output/";
+	fileName += "output/cone_";
 	if (type == 0)
 	{
 		fileName += "emi_and_refl";
@@ -317,12 +288,6 @@ void AutoOutput()	// output a result when achieve 8000 frame
 
 	std::cout << "Saved file: " << fileName << std::endl;
 
-	//// Convert to FreeImage format & save to file
-	//FIBITMAP* image = FreeImage_ConvertFromRawBits(pixels, width, height, 3 * width, 32, 0x0000FF, 0xFF0000, 0x00FF00, false);
-	//FreeImage_Save(FIF_BMP, image, files[fileNum], 0);
-	//// Free resources
-	//FreeImage_Unload(image);
-
 	fileNum++;
 	if (fileNum >= 6) std::cout << "Output finished!" << std::endl;
 	delete[] pixels;
@@ -336,16 +301,16 @@ void idle()
 {
 	frame++;	// accumulate frame number
 
-	//Auto output for all results
-	if (frame > OUTPUT_FRAME_NUM && type < 3)	// enough sample for current scene
-	{
-		AutoOutput();
-		if (camAtRight == false) type++;
-		camAtRight = !camAtRight;
-		frame = 0;
-		initCuda();
-	}
-	if (type >= 3) return;	// pause the program
+	////Auto output for all results
+	//if (frame > OUTPUT_FRAME_NUM && type < 3)	// enough sample for current scene
+	//{
+	//	AutoOutput();
+	//	if (camAtRight == false) type++;
+	//	camAtRight = !camAtRight;
+	//	frame = 0;
+	//	initCuda();
+	//}
+	//if (type >= 3) return;	// pause the program
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// clear current display result on the screen
 	runCuda();	// run CUDA program and calculate current frame result
@@ -364,6 +329,8 @@ void idle()
 	glTexCoord2f(1.0f, 0.0f); glVertex3f(1.0f, 1.0f, 0.0f);
 	glTexCoord2f(1.0f, 1.0f); glVertex3f(1.0f, 0.0f, 0.0f);
 	glEnd();
+
+	draw_gui();
 
 	glutSwapBuffers();
 }
@@ -480,7 +447,7 @@ int main(int argc, char **argv)
 	//std::cout << SceneData.verts.size() << std::endl;
 
 	initCuda();
-	//ImGui_ImplGlut_Init(); // initialize the imgui system
+
 	printGlInfo();
 
 	//Enter the glut event loop.

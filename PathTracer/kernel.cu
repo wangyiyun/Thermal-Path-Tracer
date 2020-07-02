@@ -221,14 +221,14 @@ __device__ float TriangleIntersect(const Ray& ray, float3 vert0, float3 vert1, f
 __constant__ Sphere spheres[] = {
 	/* cornell box
 	{radius	position												matName		temperature			reflectType*/
-	//{1e5f,	{-1e5f, 0.0f, 0.0f},									mat_brick,	20.0f + 273.15f,	DIFF},// left wall
-	//{1e5f,	{1e5f + room_width, 0.0f, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// right wall
-	//{1e5f,	{0.0f, 0.0f, -1e5f},									mat_brick,	20.0f + 273.15f,	DIFF},// back wall
-	//{1e5f,	{0.0f, 0.0f, 1e5f + room_depth},						mat_brick,	20.0f + 273.15f,	DIFF},// front wall
-	//{1e5f,	{0.0f, -1e5f, 0.0f},									mat_road,	20.0f + 273.15f,	DIFF},// floor
-	//{1e5f,	{0.0f, 1e5f + room_height, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// ceiling  
+	{1e5f,	{-1e5f, 0.0f, 0.0f},									mat_brick,	20.0f + 273.15f,	DIFF},// left wall
+	{1e5f,	{1e5f + room_width, 0.0f, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// right wall
+	{1e5f,	{0.0f, 0.0f, -1e5f},									mat_brick,	20.0f + 273.15f,	DIFF},// back wall
+	{1e5f,	{0.0f, 0.0f, 1e5f + room_depth},						mat_brick,	20.0f + 273.15f,	DIFF},// front wall
+	{1e5f,	{0.0f, -1e5f, 0.0f},									mat_road,	20.0f + 273.15f,	DIFF},// floor
+	{1e5f,	{0.0f, 1e5f + room_height, 0.0f},						mat_brick,	20.0f + 273.15f,	DIFF},// ceiling  
 	{50.0f,	{200.0f ,50.0f, 700.0f},								mat_al,		72.5f + 273.15f,	DIFF},// sphere 
-	//{600.0f,{room_width/2 ,room_height+600.0f-2.0f, room_depth/2},	mat_glass,	100.0f + 273.15f,	DIFF} // lamp 
+	{600.0f,{room_width/2 ,room_height+600.0f-2.0f, room_depth/2},	mat_glass,	100.0f + 273.15f,	DIFF} // lamp 
 };
 
 __constant__ Cone cones[] = {
@@ -318,7 +318,7 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 				int u_index = uv.x * texWidth;
 				int v_index = uv.y * texHeight;
 				// map the color in tex_data[offset + u_index*texWidth + v_index] to normal
-				bestHit.normal = normalize(tex_data[offset + u_index * texWidth + v_index] * 2.0f - 1.0f);
+				bestHit.normal = normalize(tex_data[offset + v_index * texWidth + u_index] * 2.0f - 1.0f);
 			}
 			// do not have an ambient texture
 			if (scene_objs_info[currentObj * 5 + 3] == -1)
@@ -340,8 +340,8 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 				int u_index = uv.x * texWidth;
 				int v_index = uv.y * texHeight;
 				// map the color in tex_data[offset + u_index*texWidth + v_index] to emissivity
-				bestHit.emissivity = tex_data[offset + u_index * texWidth + v_index].x;
-				//bestHit.color = tex_data[offset + u_index * texWidth + v_index];
+				bestHit.emissivity = tex_data[offset + v_index * texWidth + u_index].x;
+				//bestHit.color = tex_data[offset + v_index * texWidth + u_index];
 			}
 			
 			bestHit.hitDist = d;
