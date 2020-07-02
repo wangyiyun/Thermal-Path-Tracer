@@ -23,6 +23,8 @@
 #include "ObjLoader.h"
 #include "TexLoader.h"
 
+#include "imgui_impl_glut.h"
+
 const int width = 640;	// width of the figure
 const int height = 480;	// height of the figure
 unsigned int frame = 0;	// a frame counter, used as a random seed
@@ -72,7 +74,12 @@ float3* d_tex_data;
 
 void draw_gui()
 {
-	
+	ImGui_ImplGlut_NewFrame();
+	if (ImGui::Button("wooooooooo"))
+	{
+		std::cout << "woo!" << std::endl;
+	}
+	ImGui::Render();
 }
 
 // create pixel buffer object in OpenGL
@@ -166,10 +173,10 @@ void setObjInfo()
 		std::cout << SceneData.objNames[i] << std::endl;
 		//std::cout << "The mat number is:";
 		//std::cin >> SceneData.objsInfo[i * 5 + 1];
-		std::cout << "The normal texture number is:";
-		std::cin >> SceneData.objsInfo[i * 5 + 2];
-		std::cout << "The ambient texture number is:";
-		std::cin >> SceneData.objsInfo[i * 5 + 3];
+		//std::cout << "The normal texture number is:";
+		//std::cin >> SceneData.objsInfo[i * 5 + 2];
+		//std::cout << "The ambient texture number is:";
+		//std::cin >> SceneData.objsInfo[i * 5 + 3];
 		//std::cout << "The temperature is:";
 		//std::cin >> SceneData.objsInfo[i * 5 + 4];
 	}
@@ -375,38 +382,38 @@ void initOpenGl()
 // glut callbacks need to send keyboard and mouse events to imgui
 void keyboard(unsigned char key, int x, int y)
 {
-	//ImGui_ImplGlut_KeyCallback(key);
+	ImGui_ImplGlut_KeyCallback(key);
 	std::cout << "key : " << key << ", x: " << x << ", y: " << y << std::endl;
 }
 // some callback functions here
 void keyboard_up(unsigned char key, int x, int y)
 {
-	//ImGui_ImplGlut_KeyUpCallback(key);
+	ImGui_ImplGlut_KeyUpCallback(key);
 }
 
 void special_up(int key, int x, int y)
 {
-	//ImGui_ImplGlut_SpecialUpCallback(key);
+	ImGui_ImplGlut_SpecialUpCallback(key);
 }
 
 void passive(int x, int y)
 {
-	//ImGui_ImplGlut_PassiveMouseMotionCallback(x, y);
+	ImGui_ImplGlut_PassiveMouseMotionCallback(x, y);
 }
 
 void special(int key, int x, int y)
 {
-	//ImGui_ImplGlut_SpecialCallback(key);
+	ImGui_ImplGlut_SpecialCallback(key);
 }
 
 void motion(int x, int y)
 {
-	//ImGui_ImplGlut_MouseMotionCallback(x, y);
+	ImGui_ImplGlut_MouseMotionCallback(x, y);
 }
 
 void mouse(int button, int state, int x, int y)
 {
-	//ImGui_ImplGlut_MouseButtonCallback(button, state);
+	ImGui_ImplGlut_MouseButtonCallback(button, state);
 }
 
 int main(int argc, char **argv)
@@ -432,6 +439,7 @@ int main(int argc, char **argv)
 
 	
 	initOpenGl();
+	ImGui_ImplGlut_Init();	// initialize the imgui system
 	// load scene before init CUDA! Need mesh data for initialize
 	LoadObj("input/scene2.obj", SceneData);
 	// load texture
@@ -445,7 +453,7 @@ int main(int argc, char **argv)
 	prepareTextures();
 	setObjInfo();
 	//std::cout << SceneData.verts.size() << std::endl;
-
+	
 	initCuda();
 
 	printGlInfo();
@@ -455,6 +463,7 @@ int main(int argc, char **argv)
 	cudaThreadExit();
 	glutDestroyWindow(win);
 
+	// free buffer before close
 	cudaFree(result);
 	cudaFree(accu);
 	cudaFree(randState);
@@ -471,6 +480,8 @@ int main(int argc, char **argv)
 	SceneData.FreeScene();
 	tex_mug_normal.FreeTexture();
 	tex_table_ambient.FreeTexture();
+
+	ImGui_ImplGlut_Shutdown();
 
 	return 0;
 }

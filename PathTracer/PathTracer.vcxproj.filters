@@ -7,6 +7,9 @@
     <Filter Include="Source Files">
       <UniqueIdentifier>{99c2e6b0-c3e5-4c84-9cb0-520af9226611}</UniqueIdentifier>
     </Filter>
+    <Filter Include="imgui-master">
+      <UniqueIdentifier>{15130979-632a-484f-9591-5effa1b03a4e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cutil_math.h">
@@ -18,10 +21,46 @@
     <ClInclude Include="TexLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="imconfig.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui_impl_glut.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
+    <ClInclude Include="imgui_internal.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
+    <ClInclude Include="imstb_rectpack.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
+    <ClInclude Include="imstb_textedit.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
+    <ClInclude Include="imstb_truetype.h">
+      <Filter>imgui-master</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui.cpp">
+      <Filter>imgui-master</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui_demo.cpp">
+      <Filter>imgui-master</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui_draw.cpp">
+      <Filter>imgui-master</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui_impl_glut.cpp">
+      <Filter>imgui-master</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui_widgets.cpp">
+      <Filter>imgui-master</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

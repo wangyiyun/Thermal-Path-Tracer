@@ -574,8 +574,8 @@ extern "C" void launch_kernel(float3* result, float3* accumbuffer, curandState* 
 	int type) {
 
 	//set thread number
-	int tx = 32;
-	int ty = 32;
+	int tx = 16;
+	int ty = 16;
 
 	dim3 blocks(w / tx + 1, h / ty + 1);
 	dim3 threads(tx, ty);
