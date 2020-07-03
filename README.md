@@ -1,4 +1,4 @@
-# PathTracer-BBp
+# Thermal Path Tracer
 
 A path tracing simulator for heat emission and reflection.
 
