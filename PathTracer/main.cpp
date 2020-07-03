@@ -43,10 +43,10 @@ curandState* randState;
 extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsigned int, unsigned int, bool, int, 
 	int, float3*, int, int*, float2*, float3*,
 	int, int*, float3*,
-	int);
+	int, float*);
 
 // Auto output
-#define OUTPUT_FRAME_NUM 50
+#define OUTPUT_FRAME_NUM 256
 bool camAtRight = true;	// pos of the camera, true for right side, false for left side
 int waveNum = 0;
 int type = 0;	// 0: emi+refl, 1: emi, 2: refl
@@ -71,14 +71,18 @@ float3* h_tex_data;	// pixels color of all textures
 // device
 int* d_tex_wh;	//[w0,h0,w1,h1...] size = texNum * 2
 float3* d_tex_data;
+float* d_emiList;
 
 // func
 void initCuda();
+void AutoOutput();
+void GenFileName(std::string *s);
 
 void draw_gui()
 {
 	ImGui_ImplGlut_NewFrame();
 	//ImGui::ShowDemoWindow();
+	ImGui::Begin("Parameter setting");
 	if (ImGui::Checkbox("Cam at right", &camAtRight))
 	{
 		initCuda();
@@ -97,33 +101,48 @@ void draw_gui()
 	{
 		initCuda();
 	}
-	const char* items[] = { "mat_human", "mat_marble", "mat_paint", "mat_glass", "mat_rubber", "mat_brass", "mat_road", "mat_al", "mat_al2o3", "mat_brick" };
+	const char* materials[] = { "mat_human", "mat_marble", "mat_paint", "mat_glass", "mat_rubber", "mat_brass", "mat_road", "mat_al", "mat_al2o3", "mat_brick" };
 	ImGui::BeginTabBar("Object Info");
-	if (ImGui::BeginTabItem("material"))
+	if (ImGui::BeginTabItem("emissivity"))
 	{
 		for (unsigned int i = 0; i < SceneData.objsNum; i++)
 		{
-			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature]
-			char* objName = new char[SceneData.objNames[i].size() + 1];
-			std::copy(SceneData.objNames[i].begin(), SceneData.objNames[i].end(), objName);
-			objName[SceneData.objNames[i].size()] = '\0';
+			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
+			
+			std::string emiRes0, emiRes1, emiRes2;
+			emiRes0 = SceneData.objNames[i] + " from mat";
+			emiRes1 = SceneData.objNames[i] + " from tex";
+			emiRes2 = SceneData.objNames[i] + " from value";
+			const char* er0 = emiRes0.c_str();
+			const char* er1 = emiRes1.c_str();
+			const char* er2 = emiRes2.c_str();
 
-			static const char* item_current = items[0];	// Here our selection is a single pointer stored outside the object.
-			static ImGuiComboFlags flags = 0;
-			if (ImGui::BeginCombo(objName, item_current, flags)) // The second parameter is the label previewed before opening the combo.
+			std::string currentMat;
+			currentMat += materials[SceneData.objsInfo[i * 6 + 1]];
+			currentMat += " for " + SceneData.objNames[i];
+			const char* cm = currentMat.c_str();
+
+			std::string currentTex;
+			currentTex += "Emi tex for " + SceneData.objNames[i];
+			const char* ct = currentTex.c_str();
+			
+			ImGui::RadioButton(er0, &SceneData.objsInfo[i * 6 + 5], 0);
+			ImGui::SameLine();
+			ImGui::RadioButton(er1, &SceneData.objsInfo[i * 6 + 5], 1);
+			ImGui::SameLine();
+			ImGui::RadioButton(er2, &SceneData.objsInfo[i * 6 + 5], 2);
+			if (SceneData.objsInfo[i * 6 + 5] == 0)
 			{
-				for (int n = 0; n < IM_ARRAYSIZE(items); n++)
-				{
-					bool is_selected = (item_current == items[n]);
-					if (ImGui::Selectable(items[n], is_selected))
-						item_current = items[n];
-					if (is_selected)
-						ImGui::SetItemDefaultFocus();   // Set the initial focus when opening the combo (scrolling + for keyboard navigation support in the upcoming navigation branch)
-				}
-				ImGui::EndCombo();
+				ImGui::SliderInt(cm, &SceneData.objsInfo[i * 6 + 1], 0, 9);
 			}
-
-			delete[] objName;
+			else if (SceneData.objsInfo[i * 6 + 5] == 1)
+			{
+				ImGui::SliderInt(ct, &SceneData.objsInfo[i * 6 + 3], -1, 1);
+			}
+			else
+			{
+				ImGui::InputFloat("emi value", &SceneData.emiList[i]);
+			}
 		}
 		ImGui::EndTabItem();
 	}
@@ -131,24 +150,65 @@ void draw_gui()
 	{
 		for (unsigned int i = 0; i < SceneData.objsNum; i++)
 		{
-			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature]
-			char* objName = new char[SceneData.objNames[i].size() + 1];
-			std::copy(SceneData.objNames[i].begin(), SceneData.objNames[i].end(), objName);
-			objName[SceneData.objNames[i].size()] = '\0';
+			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
+			const char* objName = SceneData.objNames[i].c_str();
+			ImGui::SliderInt(objName, &SceneData.objsInfo[i * 6 + 4], 0, 100);
 
-			ImGui::SliderInt(objName, &SceneData.objsInfo[i * 5 + 4], 0.0f, 100.0f);
-
-			delete[] objName;
 		}
 		ImGui::EndTabItem();
 	}
+	if (ImGui::BeginTabItem("normal texture"))
+	{
+		for (unsigned int i = 0; i < SceneData.objsNum; i++)
+		{
+			const char* objName = SceneData.objNames[i].c_str();
+			ImGui::SliderInt(objName, &SceneData.objsInfo[i * 6 + 2], -1, 1);
+		}
+		ImGui::EndTabItem();
+	}
+	
 	ImGui::EndTabBar();
 	
-	if (ImGui::Button("init cuda"))
+	if (ImGui::Button("Compute"))
 	{
 		initCuda();
 	}
+	std::string fileName;
+	GenFileName(&fileName);
+	const char* fn = fileName.c_str();
+	ImGui::Text("Output to:");
+	ImGui::Text(fn);
+	if (ImGui::Button("Output data"))
+	{
+		AutoOutput();
+	}
+	ImGui::SameLine();
+	std::string frameCount = std::to_string(frame);
+	const char* fc = frameCount.c_str();
+	ImGui::Text(fc);
 	ImGui::Render();
+}
+
+void GenFileName(std::string *s)
+{
+	s->clear();
+	*s += "output/mesh_";
+	if (type == 0)
+	{
+		*s += "emi_and_refl";
+	}
+	else if (type == 1)
+	{
+		*s += "emi_only";
+	}
+	else
+	{
+		*s += "refl_only";
+	}
+	*s += "_cam_";
+	if (camAtRight) *s += "right.txt";
+	else *s += "left.txt";
+	return;
 }
 
 // create pixel buffer object in OpenGL
@@ -225,41 +285,15 @@ void prepareTextures()
 	//FreeImage_Unload(image);
 }
 
-void setObjInfo()
-{
-	std::cout << "----------MAT NUMBER----------" << std::endl;
-	std::cout << "mat_human = 0, mat_marble = 1, mat_paint = 2, mat_glass = 3, mat_rubber = 4"<< std::endl;
-	std::cout << "mat_brass = 5, mat_road = 6, mat_al = 7, mat_al2o3 = 8, mat_brick = 9" << std::endl;
-	std::cout << "----------TEX NUMBER----------" << std::endl;
-	std::cout << "tex_mug_normal = 0, tex_table_ambient = 1" << std::endl;
-	std::cout << "If don't have texture, input -1" << std::endl;
-	std::cout << "---------TEMPERATURE----------" << std::endl;
-	std::cout << "In put temperature in centigrade scale" << std::endl;
-	//for (unsigned int i = 0; i < SceneData.objsNum; i++)
-	//{
-	//	std::cout << "-------------------------------" << std::endl;
-	//	std::cout << "Current object name is :";
-	//	std::cout << SceneData.objNames[i] << std::endl;
-	//	//std::cout << "The mat number is:";
-	//	//std::cin >> SceneData.objsInfo[i * 5 + 1];
-	//	//std::cout << "The normal texture number is:";
-	//	//std::cin >> SceneData.objsInfo[i * 5 + 2];
-	//	//std::cout << "The ambient texture number is:";
-	//	//std::cin >> SceneData.objsInfo[i * 5 + 3];
-	//	//std::cout << "The temperature is:";
-	//	//std::cin >> SceneData.objsInfo[i * 5 + 4];
-	//}
-}
-
 void initCuda()
 {
 	frame = 0;
 	// all verts in scene
 	cudaMalloc((void**)& scene_verts, SceneData.vertsNum *sizeof(float3));
 	cudaMemcpy(scene_verts, SceneData.verts, SceneData.vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
-	// all objects and info	[objVertsNum, matNum, normalTexNum, ambientTexNum, temperature]
-	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 5 * sizeof(int));
-	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 5 * sizeof(int), cudaMemcpyHostToDevice);
+	// all objects and info	[objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
+	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 6 * sizeof(int));
+	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 6 * sizeof(int), cudaMemcpyHostToDevice);
 	// all uvs at each vert
 	cudaMalloc((void**)& scene_uvs, SceneData.vertsNum * sizeof(float2));
 	cudaMemcpy(scene_uvs, SceneData.uvs, SceneData.vertsNum * sizeof(float2), cudaMemcpyHostToDevice);
@@ -272,6 +306,9 @@ void initCuda()
 	// all pixles for all data
 	cudaMalloc((void**)& d_tex_data, tex_data_size * sizeof(float3));
 	cudaMemcpy(d_tex_data, h_tex_data, tex_data_size * sizeof(float3), cudaMemcpyHostToDevice);
+	// emi value list
+	cudaMalloc((void**)& d_emiList, SceneData.objsNum * sizeof(float));
+	cudaMemcpy(d_emiList, SceneData.emiList, SceneData.objsNum * sizeof(float), cudaMemcpyHostToDevice);
 	// Buffer for Monte Carlo
 	cudaMalloc(&accu, width * height * sizeof(float3));	// register accu buffer, this buffer won't refresh
 	cudaMalloc(&randState, width * height * sizeof(curandState));	// each pixel's random seed per frame
@@ -289,7 +326,7 @@ void runCuda()
 	launch_kernel(result, accu, randState, width, height, frame, camAtRight, waveNum, 
 		SceneData.vertsNum, scene_verts, SceneData.objsNum, scene_objs,
 		scene_uvs, scene_normals,
-		texNum,d_tex_wh, d_tex_data, type);
+		texNum,d_tex_wh, d_tex_data, type, d_emiList);
 
 	cudaGraphicsUnmapResources(1, &resource, 0);
 }
@@ -319,23 +356,8 @@ void AutoOutput()	// output a result when achieve 8000 frame
 	glGetTexImage(GL_TEXTURE_2D ,0, GL_RGB, GL_FLOAT, pixels);
 
 	std::ofstream outfile;
-	std::string  fileName;	// output/wave_?_cam_?.txt
-	fileName += "output/mesh_";
-	if (type == 0)
-	{
-		fileName += "emi_and_refl";
-	}
-	else if (type == 1)
-	{
-		fileName += "emi_only";
-	}
-	else
-	{
-		fileName += "refl_only";
-	}
-	fileName += "_cam_";
-	if (camAtRight) fileName += "right.txt";
-	else fileName += "left.txt";
+	std::string fileName;
+	GenFileName(&fileName);
 
 	outfile.open(fileName);
 
@@ -362,7 +384,7 @@ void AutoOutput()	// output a result when achieve 8000 frame
 	std::cout << "Saved file: " << fileName << std::endl;
 
 	fileNum++;
-	if (fileNum >= 6) std::cout << "Output finished!" << std::endl;
+	//if (fileNum >= 6) std::cout << "Output finished!" << std::endl;
 	delete[] pixels;
 	outfile.close();
 }
@@ -449,7 +471,6 @@ void initOpenGl()
 void keyboard(unsigned char key, int x, int y)
 {
 	ImGui_ImplGlut_KeyCallback(key);
-	std::cout << "key : " << key << ", x: " << x << ", y: " << y << std::endl;
 }
 // some callback functions here
 void keyboard_up(unsigned char key, int x, int y)
@@ -489,7 +510,7 @@ int main(int argc, char **argv)
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
 	glutInitWindowPosition(5, 5);
 	glutInitWindowSize(width, height);
-	int win = glutCreateWindow("Path Tracer");
+	int win = glutCreateWindow("Thermal Path Tracer");
 
 	//Register callback functions with glut. 
 	glutDisplayFunc(display);
@@ -517,7 +538,6 @@ int main(int argc, char **argv)
 	//textures.push_back(tex_table_ambient);
 	// set all data to 
 	prepareTextures();
-	setObjInfo();
 	//std::cout << SceneData.verts.size() << std::endl;
 	
 	initCuda();
