@@ -4,6 +4,8 @@
 #include <string>
 #include "cutil_math.h"
 
+#define OBJ_INFO_COUNT 8
+
 struct Scene
 {
 	int vertsNum;	// vertices number of the scene, also the number of uvs and normals
@@ -88,17 +90,19 @@ bool LoadObj(
 		}
 	}
 	scene.objsNum = temp_object_indices.size();
-	scene.objsInfo = new int[6 * scene.objsNum];
+	scene.objsInfo = new int[OBJ_INFO_COUNT * scene.objsNum];
 	scene.emiList = new float[scene.objsNum];
 	for (unsigned int i = 0; i < scene.objsNum; i++)
 	{
-		// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
-		scene.objsInfo[i * 6] = temp_object_indices[i];	//objVertsNum
-		scene.objsInfo[i * 6 + 1] = 1;	//matNum
-		scene.objsInfo[i * 6 + 2] = -1;	//normalTexNum
-		scene.objsInfo[i * 6 + 3] = -1;	//ambientTexNum
-		scene.objsInfo[i * 6 + 4] = 35;	//temperature
-		scene.objsInfo[i * 6 + 5] = 0;	//emiSource: mat, tex, value
+		// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource. tmpSource, temTex]
+		scene.objsInfo[i * OBJ_INFO_COUNT] = temp_object_indices[i];	//objVertsNum
+		scene.objsInfo[i * OBJ_INFO_COUNT + 1] = 1;	//matNum
+		scene.objsInfo[i * OBJ_INFO_COUNT + 2] = -1;	//normalTexNum
+		scene.objsInfo[i * OBJ_INFO_COUNT + 3] = -1;	//ambientTexNum
+		scene.objsInfo[i * OBJ_INFO_COUNT + 4] = 35;	//temperature
+		scene.objsInfo[i * OBJ_INFO_COUNT + 5] = 0;	//emiSource: mat, tex, value
+		scene.objsInfo[i * OBJ_INFO_COUNT + 6] = 1;	//tmpSource: tex, value
+		scene.objsInfo[i * OBJ_INFO_COUNT + 7] = -1;	//temp tex num
 
 		scene.emiList[i] = 0.0f;
 	}

@@ -11,6 +11,7 @@ using namespace std;
 #include <unordered_map>
 
 __device__ const double c = 299792458, k = 138064852e-31, PI = 3.141592653589793238463;
+#define OBJ_INFO_COUNT 8
 
 void checkCUDAError(const char *msg)
 {
@@ -237,6 +238,11 @@ __constant__ Cone cones[] = {
 	{15,	{100.0f, 80.0f, 500.0f},	{0.0f, -1.0f, 0.0f},	mat_rubber,	37.0f + 273.15f,	DIFF}
 };
 
+__device__ float Remap(float v, float l0, float h0, float ln, float hn)
+{
+	return ln + ((v - l0) * (hn - ln)) / (h0 - l0);
+}
+
 __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit, 
 	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_info,
 	float2* scene_uvs, float3* scene_normals,
@@ -287,7 +293,7 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 		if (currentObj + 1 < objsNum)
 		{
 			// move to next obj
-			if (currentVert >= scene_objs_info[(currentObj + 1) * 6]) currentObj++;
+			if (currentVert >= scene_objs_info[(currentObj + 1) * OBJ_INFO_COUNT]) currentObj++;
 		}
 		if ((d = TriangleIntersect(ray, v0, v1, v2, u, v)) && d < bestHit.hitDist && d > 0)
 		{
@@ -297,16 +303,16 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 			float w = 1 - u - v;
 			float2 uv = w*uv0 + u*uv1 + v*uv2;
 			//bestHit.color = make_float3(uv.x, uv.y, 0);
-			// [objVertsNum, matNum, normalTexNum, ambientTexNum]
+			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource, tmpSource, temTex]
 			// do not have a normal texture
-			if (scene_objs_info[currentObj * 6 + 2] == -1)
+			if (scene_objs_info[currentObj * OBJ_INFO_COUNT + 2] == -1)
 			{
 				bestHit.normal = normalize(scene_normals[i]);
 			}
 			else
 			{
 				// find normal tex in all textures
-				int texIndex = scene_objs_info[currentObj * 6 + 2];
+				int texIndex = scene_objs_info[currentObj * OBJ_INFO_COUNT + 2];
 				int texWidth = tex_wh[texIndex * 2];
 				int texHeight = tex_wh[texIndex * 2 + 1];
 				int offset = 0;	// get pixel offset in tex_data
@@ -322,14 +328,14 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 			}
 			// which emi source?
 			// 0: mat, 1: tex, 2: value
-			if (scene_objs_info[currentObj * 6 + 5] == 0)
+			if (scene_objs_info[currentObj * OBJ_INFO_COUNT + 5] == 0)
 			{
-				bestHit.matName = scene_objs_info[currentObj * 6 + 1];	//matNum
+				bestHit.matName = scene_objs_info[currentObj * OBJ_INFO_COUNT + 1];	//matNum
 			}
-			else if (scene_objs_info[currentObj * 6 + 5] == 1 && scene_objs_info[currentObj * 6 + 3] != -1)
+			else if (scene_objs_info[currentObj * OBJ_INFO_COUNT + 5] == 1 && scene_objs_info[currentObj * OBJ_INFO_COUNT + 3] != -1)
 			{
 				// find normal tex in all textures
-				int texIndex = scene_objs_info[currentObj * 6 + 3];
+				int texIndex = scene_objs_info[currentObj * OBJ_INFO_COUNT + 3];
 				int texWidth = tex_wh[texIndex * 2];
 				int texHeight = tex_wh[texIndex * 2 + 1];
 				int offset = 0;	// get pixel offset in tex_data
@@ -348,11 +354,33 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 			{
 				bestHit.emissivity = emiList[currentObj];
 			}
+			// temperature from tex or value
+			if (scene_objs_info[currentObj * OBJ_INFO_COUNT + 6] == 0 && scene_objs_info[currentObj * OBJ_INFO_COUNT + 7] != -1)
+			{
+				// find temperature tex in all textures
+				int texIndex = scene_objs_info[currentObj * OBJ_INFO_COUNT + 7];
+				int texWidth = tex_wh[texIndex * 2];
+				int texHeight = tex_wh[texIndex * 2 + 1];
+				int offset = 0;	// get pixel offset in tex_data
+				for (int t = 0; t < texIndex; t++)
+				{
+					offset += tex_wh[t * 2] * tex_wh[t * 2 + 1];
+				}
+				// map current uv(float2) to index in tex_data[]
+				int u_index = uv.x * texWidth;
+				int v_index = uv.y * texHeight;
+				float tmpRaw = tex_data[offset + v_index * texWidth + u_index].x;
+				// remap to
+				bestHit.temperature = Remap(tmpRaw, 0.0f, 1.0f, 25.0f, 30.0f) + 273.15f;
+			}
+			else
+			{
+				bestHit.temperature = scene_objs_info[currentObj * OBJ_INFO_COUNT + 4] + 273.15f;
+			}
 			
 			bestHit.hitDist = d;
 			bestHit.geomtryType = TRIANGLE;
 			bestHit.oriNormal = dot(bestHit.normal, ray.direction) < 0.0f ? bestHit.normal : bestHit.normal * -1.0f;
-			bestHit.temperature = scene_objs_info[currentObj * 6 + 4] + 273.15f;
 			bestHit.reflectType = DIFF;
 		}
 	}
@@ -425,7 +453,7 @@ __device__ float3 radiance(Ray& ray, curandState* randstate, int frameNum, int w
 	//// hit debug
 	//bestHit.Init();
 	//if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
-	//	texNum, tex_wh, tex_data))
+	//	texNum, tex_wh, tex_data, emiList))
 	//	return make_float3(0.0f); // if miss, return black
 	//else
 	//{

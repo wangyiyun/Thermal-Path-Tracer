@@ -58,10 +58,11 @@ float3* scene_verts; // the cuda device pointer that points to the uploaded tria
 int* scene_objs;
 float2* scene_uvs;
 float3* scene_normals;
+#define OBJ_INFO_COUNT 8
 
 // host
-Texture tex_mug_normal;
-Texture tex_table_ambient;
+Texture tex_0;
+Texture tex_1;
 std::vector<Texture> textures;
 int texNum;
 int tex_data_size;	// pixels num of all textures
@@ -107,37 +108,37 @@ void draw_gui()
 	{
 		for (unsigned int i = 0; i < SceneData.objsNum; i++)
 		{
-			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
+			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource, tempSource, tempTexNum]
 			
 			std::string emiRes0, emiRes1, emiRes2;
-			emiRes0 = SceneData.objNames[i] + " from mat";
-			emiRes1 = SceneData.objNames[i] + " from tex";
-			emiRes2 = SceneData.objNames[i] + " from value";
+			emiRes0 = SceneData.objNames[i] + " emi from mat";
+			emiRes1 = SceneData.objNames[i] + " emi from tex";
+			emiRes2 = SceneData.objNames[i] + " emi from value";
 			const char* er0 = emiRes0.c_str();
 			const char* er1 = emiRes1.c_str();
 			const char* er2 = emiRes2.c_str();
 
 			std::string currentMat;
-			currentMat += materials[SceneData.objsInfo[i * 6 + 1]];
+			currentMat += materials[SceneData.objsInfo[i * OBJ_INFO_COUNT + 1]];
 			currentMat += " for " + SceneData.objNames[i];
 			const char* cm = currentMat.c_str();
 
-			std::string currentTex;
-			currentTex += "Emi tex for " + SceneData.objNames[i];
-			const char* ct = currentTex.c_str();
+			std::string currentEmiTex;
+			currentEmiTex += "Emi tex for " + SceneData.objNames[i];
+			const char* cet = currentEmiTex.c_str();
 			
-			ImGui::RadioButton(er0, &SceneData.objsInfo[i * 6 + 5], 0);
+			ImGui::RadioButton(er0, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 5], 0);
 			ImGui::SameLine();
-			ImGui::RadioButton(er1, &SceneData.objsInfo[i * 6 + 5], 1);
+			ImGui::RadioButton(er1, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 5], 1);
 			ImGui::SameLine();
-			ImGui::RadioButton(er2, &SceneData.objsInfo[i * 6 + 5], 2);
-			if (SceneData.objsInfo[i * 6 + 5] == 0)
+			ImGui::RadioButton(er2, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 5], 2);
+			if (SceneData.objsInfo[i * OBJ_INFO_COUNT + 5] == 0)
 			{
-				ImGui::SliderInt(cm, &SceneData.objsInfo[i * 6 + 1], 0, 9);
+				ImGui::SliderInt(cm, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 1], 0, 9);
 			}
-			else if (SceneData.objsInfo[i * 6 + 5] == 1)
+			else if (SceneData.objsInfo[i * OBJ_INFO_COUNT + 5] == 1)
 			{
-				ImGui::SliderInt(ct, &SceneData.objsInfo[i * 6 + 3], -1, 1);
+				ImGui::SliderInt(cet, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 3], -1, 1);
 			}
 			else
 			{
@@ -150,9 +151,29 @@ void draw_gui()
 	{
 		for (unsigned int i = 0; i < SceneData.objsNum; i++)
 		{
-			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
+			// [objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource, tempSource, tempTexNum]
 			const char* objName = SceneData.objNames[i].c_str();
-			ImGui::SliderInt(objName, &SceneData.objsInfo[i * 6 + 4], 0, 100);
+			std::string tmpRes0, tmpRes1;
+			tmpRes0 = SceneData.objNames[i] + " tmp from tex";
+			tmpRes1 = SceneData.objNames[i] + " tmp from value";
+			const char* tr0 = tmpRes0.c_str();
+			const char* tr1 = tmpRes1.c_str();
+
+			std::string currentTmpTex;
+			currentTmpTex += "Tmp tex for " + SceneData.objNames[i];
+			const char* ctt = currentTmpTex.c_str();
+
+			ImGui::RadioButton(tr0, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 6], 0);
+			ImGui::SameLine();
+			ImGui::RadioButton(tr1, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 6], 1);
+			if (SceneData.objsInfo[i * OBJ_INFO_COUNT + 6] == 0)
+			{
+				ImGui::SliderInt(ctt, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 7], -1, 1);
+			}
+			else
+			{
+				ImGui::SliderInt(objName, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 4], 0, 100);
+			}
 
 		}
 		ImGui::EndTabItem();
@@ -162,7 +183,7 @@ void draw_gui()
 		for (unsigned int i = 0; i < SceneData.objsNum; i++)
 		{
 			const char* objName = SceneData.objNames[i].c_str();
-			ImGui::SliderInt(objName, &SceneData.objsInfo[i * 6 + 2], -1, 1);
+			ImGui::SliderInt(objName, &SceneData.objsInfo[i * OBJ_INFO_COUNT + 2], -1, 1);
 		}
 		ImGui::EndTabItem();
 	}
@@ -192,7 +213,7 @@ void draw_gui()
 void GenFileName(std::string *s)
 {
 	s->clear();
-	*s += "output/mesh_";
+	*s += "output/human_";
 	if (type == 0)
 	{
 		*s += "emi_and_refl";
@@ -291,9 +312,9 @@ void initCuda()
 	// all verts in scene
 	cudaMalloc((void**)& scene_verts, SceneData.vertsNum *sizeof(float3));
 	cudaMemcpy(scene_verts, SceneData.verts, SceneData.vertsNum * sizeof(float3), cudaMemcpyHostToDevice);
-	// all objects and info	[objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource]
-	cudaMalloc((void**)& scene_objs, SceneData.objsNum * 6 * sizeof(int));
-	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * 6 * sizeof(int), cudaMemcpyHostToDevice);
+	// all objects and info	[objVertsNum, matNum, normalTexNum, ambientTexNum, temperature, emiSource, tempSource, tempTexNum]
+	cudaMalloc((void**)& scene_objs, SceneData.objsNum * OBJ_INFO_COUNT * sizeof(int));
+	cudaMemcpy(scene_objs, SceneData.objsInfo, SceneData.objsNum * OBJ_INFO_COUNT * sizeof(int), cudaMemcpyHostToDevice);
 	// all uvs at each vert
 	cudaMalloc((void**)& scene_uvs, SceneData.vertsNum * sizeof(float2));
 	cudaMemcpy(scene_uvs, SceneData.uvs, SceneData.vertsNum * sizeof(float2), cudaMemcpyHostToDevice);
@@ -528,14 +549,14 @@ int main(int argc, char **argv)
 	initOpenGl();
 	
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/scene2.obj", SceneData);
+	LoadObj("input/head.obj", SceneData);
 	// load texture
-	tex_mug_normal.LoadTex("input/texture/mug_normal.jpg");
-	textures.push_back(tex_mug_normal);
-	tex_table_ambient.LoadTex("input/texture/table_ambient.jpg");
-	textures.push_back(tex_table_ambient);
-	//tex_table_ambient.LoadTex("input/texture/test_tex.jpg");
-	//textures.push_back(tex_table_ambient);
+	tex_0.LoadTex("input/texture/human_temp.jpg");
+	textures.push_back(tex_0);
+	//tex_1.LoadTex("input/texture/table_ambient.jpg");
+	//textures.push_back(tex_1);
+	//tex_1.LoadTex("input/texture/test_tex.jpg");
+	//textures.push_back(tex_1);
 	// set all data to 
 	prepareTextures();
 	//std::cout << SceneData.verts.size() << std::endl;
@@ -563,8 +584,8 @@ int main(int argc, char **argv)
 	delete[] h_tex_wh;
 	delete[] h_tex_data;
 	SceneData.FreeScene();
-	tex_mug_normal.FreeTexture();
-	tex_table_ambient.FreeTexture();
+	tex_0.FreeTexture();
+	tex_1.FreeTexture();
 
 	ImGui_ImplGlut_Shutdown();
 
