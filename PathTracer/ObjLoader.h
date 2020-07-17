@@ -85,8 +85,9 @@ bool LoadObj(
 			uvIndices.push_back(uvIndex[0]);
 			uvIndices.push_back(uvIndex[1]);
 			uvIndices.push_back(uvIndex[2]);
-			// normal index are same!!
 			normalIndices.push_back(normalIndex[0]);
+			normalIndices.push_back(normalIndex[1]);
+			normalIndices.push_back(normalIndex[2]);
 		}
 	}
 	scene.objsNum = temp_object_indices.size();
@@ -131,7 +132,7 @@ bool LoadObj(
 	}
 	//std::cout << "normals num: " << normalIndices.size() << std::endl;
 	// normals num == faces num
-	scene.normals = new float3[scene.vertsNum/3];
+	scene.normals = new float3[scene.vertsNum];
 	for (unsigned int i = 0; i < normalIndices.size(); i++)
 	{
 		unsigned int normalIndex = normalIndices[i];

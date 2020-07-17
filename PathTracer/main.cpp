@@ -319,8 +319,8 @@ void initCuda()
 	cudaMalloc((void**)& scene_uvs, SceneData.vertsNum * sizeof(float2));
 	cudaMemcpy(scene_uvs, SceneData.uvs, SceneData.vertsNum * sizeof(float2), cudaMemcpyHostToDevice);
 	// all normals at each vert
-	cudaMalloc((void**)& scene_normals, (SceneData.vertsNum/3) * sizeof(float3));
-	cudaMemcpy(scene_normals, SceneData.normals, (SceneData.vertsNum/3) * sizeof(float3), cudaMemcpyHostToDevice);
+	cudaMalloc((void**)& scene_normals, (SceneData.vertsNum) * sizeof(float3));
+	cudaMemcpy(scene_normals, SceneData.normals, (SceneData.vertsNum) * sizeof(float3), cudaMemcpyHostToDevice);
 	// width and height for each texture
 	cudaMalloc((void**)& d_tex_wh, texNum * 2 * sizeof(int));
 	cudaMemcpy(d_tex_wh, h_tex_wh, texNum * 2 * sizeof(int), cudaMemcpyHostToDevice);
@@ -549,9 +549,9 @@ int main(int argc, char **argv)
 	initOpenGl();
 	
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/head.obj", SceneData);
+	LoadObj("input/oldman_smooth.obj", SceneData);
 	// load texture
-	tex_0.LoadTex("input/texture/human_temp.jpg");
+	tex_0.LoadTex("input/texture/oldman_temp.jpg");
 	textures.push_back(tex_0);
 	//tex_1.LoadTex("input/texture/table_ambient.jpg");
 	//textures.push_back(tex_1);

@@ -307,7 +307,12 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 			// do not have a normal texture
 			if (scene_objs_info[currentObj * OBJ_INFO_COUNT + 2] == -1)
 			{
-				bestHit.normal = normalize(scene_normals[i]);
+				// smooth shading
+				float3 n0 = scene_normals[i * 3];
+				float3 n1 = scene_normals[i * 3 + 1];
+				float3 n2 = scene_normals[i * 3 + 2];
+
+				bestHit.normal = normalize(w * n0 + u * n1 + v * n2);
 			}
 			else
 			{
