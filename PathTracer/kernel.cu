@@ -376,7 +376,7 @@ __device__ inline bool intersect_scene(const Ray& ray, Hit& bestHit,
 				int v_index = uv.y * texHeight;
 				float tmpRaw = tex_data[offset + v_index * texWidth + u_index].x;
 				// remap to
-				bestHit.temperature = Remap(tmpRaw, 0.0f, 1.0f, 25.0f, 30.0f) + 273.15f;
+				bestHit.temperature = Remap(tmpRaw, 0.0f, 1.0f, 10.0f, 37.0f) + 273.15f;
 			}
 			else
 			{
@@ -468,6 +468,19 @@ __device__ float3 radiance(Ray& ray, curandState* randstate, int frameNum, int w
 	//	return bestHit.color;
 	//}
 	//// hit debug end
+
+	// depth map
+	if (type == 3)
+	{
+		bestHit.Init();
+		if (!intersect_scene(ray, bestHit, vertsNum, scene_verts, objsNum, scene_objs_info, scene_uvs, scene_normals,
+			texNum, tex_wh, tex_data, emiList))
+			return make_float3(0.0f); // if miss, return black
+		else
+		{
+			return make_float3(bestHit.hitDist/2000.0f);
+		}
+	}
 
 	int bounces = 0;
 	while(bounces < 5 || curand_uniform(randstate) < 0.5f)
@@ -576,6 +589,7 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		if (camAtRight) camPos = cam_right;
 		else camPos = cam_left;
 		Ray cam(camPos, normalize(make_float3(0.0f, 0.0f, -1.0f)));
+		// FOV 60
 		float3 screen = make_float3(uv.x * width + room_width / 2.0f, -uv.y * height + room_width / 2.0f, 1100.0f - (width / 2.0f) * 1.73205080757f);
 		// screen x offset
 		if (camAtRight)

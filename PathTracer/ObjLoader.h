@@ -100,7 +100,7 @@ bool LoadObj(
 		scene.objsInfo[i * OBJ_INFO_COUNT + 1] = 1;	//matNum
 		scene.objsInfo[i * OBJ_INFO_COUNT + 2] = -1;	//normalTexNum
 		scene.objsInfo[i * OBJ_INFO_COUNT + 3] = -1;	//ambientTexNum
-		scene.objsInfo[i * OBJ_INFO_COUNT + 4] = 35;	//temperature
+		scene.objsInfo[i * OBJ_INFO_COUNT + 4] = 20;	//temperature
 		scene.objsInfo[i * OBJ_INFO_COUNT + 5] = 0;	//emiSource: mat, tex, value
 		scene.objsInfo[i * OBJ_INFO_COUNT + 6] = 1;	//tmpSource: tex, value
 		scene.objsInfo[i * OBJ_INFO_COUNT + 7] = -1;	//temp tex num

@@ -88,7 +88,7 @@ void draw_gui()
 	{
 		initCuda();
 	}
-	if (ImGui::RadioButton("emi+refl", &type, 0))
+	if (ImGui::RadioButton("total", &type, 0))
 	{
 		initCuda();
 	}
@@ -99,6 +99,11 @@ void draw_gui()
 	}
 	ImGui::SameLine();
 	if (ImGui::RadioButton("refl", &type, 2))
+	{
+		initCuda();
+	}
+	ImGui::SameLine();
+	if (ImGui::RadioButton("depth", &type, 3))
 	{
 		initCuda();
 	}
@@ -213,18 +218,22 @@ void draw_gui()
 void GenFileName(std::string *s)
 {
 	s->clear();
-	*s += "output/human_";
+	*s += "output/car_";
 	if (type == 0)
 	{
-		*s += "emi_and_refl";
+		*s += "total";
 	}
 	else if (type == 1)
 	{
-		*s += "emi_only";
+		*s += "emi";
+	}
+	else if (type == 2)
+	{
+		*s += "refl";
 	}
 	else
 	{
-		*s += "refl_only";
+		*s += "depth";
 	}
 	*s += "_cam_";
 	if (camAtRight) *s += "right.txt";
@@ -549,13 +558,16 @@ int main(int argc, char **argv)
 	initOpenGl();
 	
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/oldman_smooth.obj", SceneData);
+	LoadObj("input/human_and_car.obj", SceneData);
+	//LoadObj("input/scene2.obj", SceneData);
 	// load texture
-	tex_0.LoadTex("input/texture/oldman_temp.jpg");
+	tex_0.LoadTex("input/texture/human_temp.jpg");
 	textures.push_back(tex_0);
-	//tex_1.LoadTex("input/texture/table_ambient.jpg");
-	//textures.push_back(tex_1);
-	//tex_1.LoadTex("input/texture/test_tex.jpg");
+	tex_1.LoadTex("input/texture/cube_emi.jpg");
+	textures.push_back(tex_1);
+	//tex_0.LoadTex("input/texture/mug_normal.jpg");
+	//textures.push_back(tex_0);
+	//tex_1.LoadTex("input/texture/table_emi.jpg");
 	//textures.push_back(tex_1);
 	// set all data to 
 	prepareTextures();
