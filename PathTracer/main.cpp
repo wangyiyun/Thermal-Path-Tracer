@@ -47,6 +47,7 @@ extern "C" void launch_kernel(float3*, float3*, curandState*, unsigned int, unsi
 
 // Auto output
 #define OUTPUT_FRAME_NUM 256
+#define MAX_FRAME 2000
 bool camAtRight = true;	// pos of the camera, true for right side, false for left side
 int waveNum = 0;
 int type = 0;	// 0: emi+refl, 1: emi, 2: refl
@@ -218,7 +219,7 @@ void draw_gui()
 void GenFileName(std::string *s)
 {
 	s->clear();
-	*s += "output/car_";
+	*s += "output/vase_";
 	if (type == 0)
 	{
 		*s += "total";
@@ -379,7 +380,7 @@ float clamp(float n)
 inline int toInt(float x) { return int(clamp(x) * 255 + .5); }
 
 int fileNum = 0;
-void AutoOutput()	// output a result when achieve 8000 frame
+void AutoOutput()
 {
 	// for txt data, file size should around 3MB for 640*480 result
 	GLfloat* pixels = new GLfloat[3 * width * height];
@@ -424,20 +425,13 @@ void AutoOutput()	// output a result when achieve 8000 frame
 // which means it runs every frame automatically 
 void idle()
 {
-	frame++;	// accumulate frame number
-
-	////Auto output for all results
-	//if (frame > OUTPUT_FRAME_NUM && type < 3)	// enough sample for current scene
-	//{
-	//	AutoOutput();
-	//	if (camAtRight == false) type++;
-	//	camAtRight = !camAtRight;
-	//	initCuda();
-	//}
-	//if (type >= 3) return;	// pause the program
-
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// clear current display result on the screen
-	runCuda();	// run CUDA program and calculate current frame result
+	if (frame < MAX_FRAME)
+	{
+		frame++;	// accumulate frame number
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// clear current display result on the screen
+		runCuda();	// run CUDA program and calculate current frame result
+	}
+	
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
 
@@ -558,17 +552,20 @@ int main(int argc, char **argv)
 	initOpenGl();
 	
 	// load scene before init CUDA! Need mesh data for initialize
-	LoadObj("input/human_and_car.obj", SceneData);
-	//LoadObj("input/scene2.obj", SceneData);
+	//LoadObj("input/human_and_car.obj", SceneData);
+	LoadObj("input/scene2.obj", SceneData);
+	//LoadObj("input/oldman_smooth.obj", SceneData);
 	// load texture
-	tex_0.LoadTex("input/texture/human_temp.jpg");
-	textures.push_back(tex_0);
-	tex_1.LoadTex("input/texture/cube_emi.jpg");
-	textures.push_back(tex_1);
-	//tex_0.LoadTex("input/texture/mug_normal.jpg");
+	//tex_0.LoadTex("input/texture/human_temp.jpg");
 	//textures.push_back(tex_0);
-	//tex_1.LoadTex("input/texture/table_emi.jpg");
+	//tex_1.LoadTex("input/texture/cube_emi.jpg");
 	//textures.push_back(tex_1);
+	tex_0.LoadTex("input/texture/mug_normal.jpg");
+	textures.push_back(tex_0);
+	tex_1.LoadTex("input/texture/table_emi.jpg");
+	textures.push_back(tex_1);
+	//tex_0.LoadTex("input/texture/oldman_temp.jpg");
+	//textures.push_back(tex_0);
 	// set all data to 
 	prepareTextures();
 	//std::cout << SceneData.verts.size() << std::endl;

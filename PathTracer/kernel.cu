@@ -41,8 +41,12 @@ uint WangHash(uint a) {
 // "__constant__": This data won't and can't be modified
 
 // Changing variables
-__constant__ float3 cam_right = { 200.0f, 150.0f, 1100.0f };
-__constant__ float3 cam_left = { 100.0f, 150.0f, 1100.0f };
+//__constant__ float3 cam_right = { 200.0f, 150.0f, 1100.0f };
+//__constant__ float3 cam_left = { 100.0f, 150.0f, 1100.0f };
+// center 150.f
+__constant__ float cam_half_dist = 10.0f;
+__constant__ float3 cam_right = { 160.0f, 150.0f, 1100.0f };
+__constant__ float3 cam_left = { 140.0f, 150.0f, 1100.0f };
 #define USING_WAVE 0	// from 0 to 10
 
 // reflection type (DIFFuse, SPECular, REFRactive)
@@ -478,7 +482,8 @@ __device__ float3 radiance(Ray& ray, curandState* randstate, int frameNum, int w
 			return make_float3(0.0f); // if miss, return black
 		else
 		{
-			return make_float3(bestHit.hitDist/2000.0f);
+			float3 hitPos = ray.origin + bestHit.hitDist * ray.direction;
+			return make_float3((1100.0f - hitPos.z)/2000.0f);
 		}
 	}
 
@@ -548,15 +553,6 @@ __device__ float3 radiance(Ray& ray, curandState* randstate, int frameNum, int w
 	return make_float3(accuIntensity);
 }
 
-__device__ float3 gammaCorrect(float3 c)
-{
-	float3 g;
-	g.x = pow(c.x, 1 / 2.2f);
-	g.y = pow(c.y, 1 / 2.2f);
-	g.z = pow(c.z, 1 / 2.2f);
-	return g;
-}
-
 __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt, 
 	int width, int height, int frameNum, int HashedFrameNum, bool camAtRight, int waveNum, 
 	int vertsNum, float3* scene_verts, int objsNum, int* scene_objs_info,
@@ -594,11 +590,11 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		// screen x offset
 		if (camAtRight)
 		{
-			screen += make_float3(50.0f, 0.0f, 0.0f);
+			screen += make_float3(cam_half_dist, 0.0f, 0.0f);
 		} 
 		else
 		{
-			screen -= make_float3(50.0f, 0.0f, 0.0f);
+			screen -= make_float3(cam_half_dist, 0.0f, 0.0f);
 		}
 		float3 dir = normalize(screen - cam.origin);
 		//result[index] = make_float3(dir.x);
@@ -611,7 +607,6 @@ __global__ void render(float3 *result, float3* accumbuffer, curandState* randSt,
 		accumbuffer[index] += pixelColor;
 	}
 	float3 tempCol = accumbuffer[index] / (float)frameNum;
-	//tempCol = gammaCorrect(tempCol);
 
 	result[index] = tempCol;
 }
